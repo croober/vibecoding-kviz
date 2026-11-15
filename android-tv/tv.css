@@ -72,7 +72,7 @@ body.tv .scoreboard .team.tv-buzz {
 body.tv .scoreboard .team.tv-buzz::after {
   content: "🔔 odpovídá"; position: absolute; top: -.9em; right: 10px;
   padding: 2px 10px; border-radius: 999px; background: var(--text); color: var(--bg);
-  font-size: .9rem; font-weight: 700; line-height: 1.4; white-space: nowrap; pointer-events: none;
+  font-size: 1.1rem; font-weight: 700; line-height: 1.4; white-space: nowrap; pointer-events: none;
 }
 /* pruh „Odpovídá“ nad odpověďmi: čitelný ze 3 m, nápověda pro moderátora menší */
 body.tv .tv-buzz-bar {
@@ -86,6 +86,11 @@ body.tv .tv-buzz-who {
   font-size: clamp(1.4rem, min(2.8vw, 4vh), 3rem); overflow-wrap: anywhere;
 }
 body.tv .tv-buzz-hint { margin: 4px 0 0; font-size: clamp(1rem, min(1.5vw, 2.2vh), 1.5rem); font-weight: 600; }
+/* špatná odpověď při bzučení (tv-buzz.js), otázka ještě běží: zeslabená, přeškrtnutá a s ✗ – čárkovaný rámec
+   bez červené výplně ji odliší od odhalené špatné odpovědi (.answer.wrong) */
+body.tv .answer.tv-buzz-wrong { opacity: .5; border-style: dashed; border-color: var(--bad); }
+body.tv .answer.tv-buzz-wrong .text { text-decoration: line-through; }
+body.tv .answer.tv-buzz-wrong::after { content: "✗"; margin-left: auto; font-size: .9em; font-weight: 800; color: var(--bad); }
 /* odpověď s fokusem: plná výplň a tlustý rámec */
 body.tv .answer:focus {
   outline: 6px solid var(--accent); outline-offset: 3px;

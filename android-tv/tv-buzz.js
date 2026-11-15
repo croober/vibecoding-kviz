@@ -1,7 +1,9 @@
 // TV nadstavba, kolo bzučáku: podle toho, co je právě na televizi, otevírá, odjišťuje, pozastavuje, vyhodnocuje
 // a zavírá kolo herní logiky (KvizGameCore přes KvizTvGame.game). Vítěze ukáže pruhem #tvBuzzBar před #answers,
 // třídou tv-buzz na kartě týmu a zvukem; Zpět ovladače při bzučení tým uvolní (KvizTvBuzz.onBack z tv-remote.js).
-// Vkládá se jen do APK (android-tv/prepare.mjs) jako poslední TV skript, za tv-lobby.js.
+// Výběr odpovědi při bzučení (obal pick): špatná odpověď, když může odpovídat jiný tým, otázku neodhalí – jen ji označí
+// (tv-buzz-wrong) a tým zamkne; správná odpověď přičte bzučícímu týmu body sama (KvizTvGame.settings().autoPoints).
+// Vkládá se jen do APK (android-tv/prepare.mjs) jako poslední TV skript, za tv-lobby.js (obal pick je až po tv-remote.js).
 // Rozhraní: kontrakt hráčů (.claude-work/2026-11-15-hraci-buzzer/kontrakt.md) § 4 (Kolo, TIMING), § 7 (KvizTvBuzz).
 //
 // Pravidla kola (stisky, zámky týmů, tresty, pořadí) jsou jen v KvizGameCore; tady se jen rozhoduje, kdy je zavolat.
@@ -10,12 +12,12 @@
 //
 // Spoléhá na věci z app.js (při jejich změně zkontrolovat tenhle soubor):
 //   globály: state (view, index, locked, bigTeams, quiz (jen identita), teams (emoji, name)),
-//            currentQ (jen .revealed, .picked, .correct)
+//            currentQ (jen .revealed, .picked, .correct), pick (obaluje se), addPoints, questionPoints, scoringActive
 //   prvky:   body[data-view], třída těla teams-big (velké zobrazení týmů), dialog[open], #menuPanel a #emojiPicker
-//            (atribut hidden), #teams (děti = karty týmů v pořadí state.teams) a #answers (děti se překreslují
-//            při odhalení i změně otázky, sourozenci ne)
+//            (atribut hidden), #teams (děti = karty týmů v pořadí state.teams) a #answers (děti = tlačítka odpovědí
+//            a, b, c; překreslují se při výběru, odhalení i změně otázky, sourozenci ne)
 // a na TV vrstvu: KvizTv (tv-server.js), KvizTvGame (tv-game.js: game, settings, refresh, hooks.onBuzz, onChange),
-//   KvizGameCore.TIMING (game-core.js), KvizTvSound.play("buzz") (tv-sound.js, volitelně).
+//   KvizGameCore.TIMING (game-core.js), KvizTvSound.play("buzz" | "wrong") (tv-sound.js, volitelně).
 (() => {
   "use strict";
   const Game = window.KvizTvGame;
@@ -36,6 +38,7 @@
   let roundIndex = null;  // index otázky, pro kterou běží kolo; null = kolo se při příštím hraní otevře znovu
   let roundQuiz = null;   // state.quiz, pro který běží kolo; nový kvíz (i z menu na obrazovce quiz) = nové kolo
   let answering = null;   // { clientId, name, team } vítěze bzučení (pruh a karta týmu)
+  let wrongKeys = [];     // špatně vybrané odpovědi v právě běžícím kole (otázka se kvůli druhé šanci neodhalila)
 
   /* ---------- Stav obrazovky ---------- */
   function playable() {
@@ -130,14 +133,71 @@
     return true;
   }
 
-  // Zpět ovladače při bzučení = tým neodpověděl: zamkne se do konce otázky, bzučák se otevře ostatním.
-  function onBack() {
-    if (!answering) return false;
+  // Tým, který bzučel, neodpověděl nebo odpověděl špatně: zamkne se do konce otázky, bzučák se otevře ostatním.
+  function releaseAnswering() {
     game.release();
     clearAnswering();
     Game.refresh();
     sync();
+  }
+
+  // Zpět ovladače při bzučení = tým neodpověděl. Při velkém zobrazení týmů Zpět patří jemu (zavře ho).
+  function onBack() {
+    if (!answering || appState().bigTeams) return false;
+    runSafely(releaseAnswering, "při Zpět");
     return true;
+  }
+
+  /* ---------- Výběr odpovědi při bzučení: druhá šance a automatický bod ---------- */
+  const ANSWER_KEYS = ["a", "b", "c"];
+  const WRONG_CLASS = "tv-buzz-wrong";
+
+  // Druhou šanci má smysl dát, jen když může bzučet jiný nezamčený tým s připojeným hráčem.
+  function otherTeamCanAnswer() {
+    const locked = game.round().lockedTeams;
+    return game.players().some((p) =>
+      p.connected && p.team !== null && p.team !== answering.team && locked.indexOf(p.team) === -1);
+  }
+
+  // Značky špatných odpovědí vrací tlačítkům po každém přestavění #answers; patří jen běžícímu kolu neodhalené otázky.
+  function markWrongAnswers() {
+    const q = questionNow();
+    if (!roundIsCurrent() || !q || q.revealed) wrongKeys = [];
+    const buttons = $("answers") ? $("answers").children : [];
+    ANSWER_KEYS.forEach((key, i) => {
+      const button = buttons[i];
+      if (!button || wrongKeys.indexOf(key) === -1) return;
+      button.classList.add(WRONG_CLASS);
+      button.disabled = true;
+    });
+  }
+
+  // Špatná odpověď se zbývajícím týmem: otázka se neodhalí a do průběhu kvízu se nic nezapíše (R2).
+  function giveSecondChance(key) {
+    if (wrongKeys.indexOf(key) === -1) wrongKeys.push(key);
+    markWrongAnswers();
+    if (window.KvizTvSound) window.KvizTvSound.play("wrong");
+    releaseAnswering();
+  }
+
+  // Obal pick() z app.js (už obaleného v tv-remote.js pro jeden tým). Mimo bzučení volá původní funkci beze změny.
+  function wrapPick() {
+    if (typeof pick !== "function" || typeof currentQ !== "function") return;
+    const basePick = pick;
+    window.pick = function (key) {
+      const q = questionNow();
+      if (!answering || appState().locked || !q || q.revealed) return basePick.apply(this, arguments);
+      if (key !== q.correct && otherTeamCanAnswer()) {
+        runSafely(() => giveSecondChance(key), "při druhé šanci");
+        return undefined;
+      }
+      const team = answering.team; // před voláním: po odhalení sync() answering vynuluje
+      const result = basePick.apply(this, arguments);
+      if (q.revealed && key === q.correct && Game.settings().autoPoints && teamCount() >= MIN_TEAMS && scoringActive()) {
+        addPoints(team, questionPoints());
+      }
+      return result;
+    };
   }
 
   /* ---------- Časovače ---------- */
@@ -186,6 +246,7 @@
     if (!roundIsCurrent()) {
       cancelTimers();
       clearAnswering();
+      wrongKeys = [];
       game.openRound(s.index);
       roundIndex = s.index;
       roundQuiz = s.quiz;
@@ -211,6 +272,7 @@
   function stopPlaying() {
     cancelTimers();
     clearAnswering();
+    wrongKeys = [];
     roundIndex = null;
     roundQuiz = null;
     const status = game.round().status;
@@ -247,9 +309,12 @@
     ["teams", "answers"].forEach((id) => watch(id, { childList: true }));
     // Překreslená lišta týmů ztratí třídu tv-buzz; vrací se hned, ne až po srovnání kola (vzor tv-remote.js).
     if ($("teams")) new MutationObserver(renderAnswering).observe($("teams"), { childList: true });
+    // Přestavěné odpovědi ztratí značku špatné odpovědi; vrací se hned, aby označené tlačítko nešlo ani chvíli vybrat.
+    if ($("answers")) new MutationObserver(markWrongAnswers).observe($("answers"), { childList: true });
     Game.onChange(scheduleSync);
   }
 
+  wrapPick();
   Game.hooks.onBuzz = onBuzz;
   window.KvizTvBuzz = { onBack };
   watchPage();

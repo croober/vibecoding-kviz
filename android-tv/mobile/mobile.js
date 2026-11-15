@@ -1,5 +1,6 @@
 // Mobilní ovladač kvízu: jen vstup. Nic nepočítá, zobrazuje jen snímek, který pošle televize.
-// Protokol: zprávy hello, key, text a snímek stavu z kontraktu mobilního ovládání (§ 2 a § 3).
+// Protokol: zprávy hello, key, text a snímek stavu z kontraktu mobilního ovládání (§ 2 a § 3);
+// klíč ovladače a zpráva rekey (výměna klíče bez odpojení): kontrakt hráčů § 1 a § 2.
 (() => {
   "use strict";
 
@@ -44,7 +45,7 @@
 
   const params = new URLSearchParams(location.search);
   const token = params.get("t");
-  const remoteKey = params.get("k"); // klíč ovladače z QR kódu: jen do hello, nikam se nevypisuje
+  const urlKey = params.get("k"); // klíč ovladače z QR kódu: jen do hello, nikam se nevypisuje
   if (!token) {
     el.app.hidden = true;
     el.noToken.hidden = false;
@@ -54,6 +55,12 @@
   // --- úložiště (každý přístup v try/catch, stránka musí fungovat i bez něj) ---
 
   const storageKey = `kviz-link-${token}`;
+
+  // Klíč ovladače (z adresy, uložený nebo ze zprávy rekey): stejná mez délky jako na TV (link-core LIMITS.remoteKey).
+  const REMOTE_KEY_MAX = 64;
+  function isRemoteKey(v) {
+    return typeof v === "string" && v.length >= 1 && v.length <= REMOTE_KEY_MAX;
+  }
 
   function loadStored() {
     try {
@@ -75,7 +82,15 @@
 
   const stored = loadStored() || { clientId: randomId(), resume: null, seq: 0 };
   if (typeof stored.seq !== "number") stored.seq = 0;
+  if (!isRemoteKey(stored.remoteKey)) delete stored.remoteKey;
   saveStored();
+
+  // Kandidáti jedné série připojování: první je ten, který naposledy prošel (nebo přišel v rekey), pak druhý zdroj.
+  // Po forbidden se první zahodí; seznam se během série jen zkracuje, takže pokusů je nejvýš tolik, kolik je klíčů.
+  function keyCandidates(first, second) {
+    return [first, second].filter((k, i, all) => isRemoteKey(k) && all.indexOf(k) === i);
+  }
+  let keys = keyCandidates(urlKey, stored.remoteKey);
 
   // --- stav ---
 
@@ -259,11 +274,27 @@
   function sendHello() {
     const hello = { t: "hello", clientId: stored.clientId, role: "remote" };
     if (stored.resume) hello.resume = stored.resume;
-    if (remoteKey) hello.remoteKey = remoteKey;
+    if (keys.length) hello.remoteKey = keys[0];
     send(hello);
   }
 
-  // Televize odmítla klíč ovladače: odkaz je neplatný a další pokusy by skončily stejně.
+  // Klíč, se kterým přihlášení prošlo (nebo nový z rekey): uloží se a příští série začíná od něj.
+  function rememberKey(key) {
+    if (!isRemoteKey(key)) return;
+    stored.remoteKey = key;
+    saveStored();
+    keys = keyCandidates(key, urlKey);
+  }
+
+  // Televize odmítla klíč: zkusí se další kandidát na novém spojení; false = kandidáti došli.
+  function tryNextKey() {
+    keys.shift();
+    if (!keys.length) return false;
+    connect();
+    return true;
+  }
+
+  // Televize odmítla všechny klíče: odkaz je neplatný a další pokusy by skončily stejně.
   function stopForbidden() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -323,6 +354,7 @@
         stored.resume = msg.resume;
         saveStored();
       }
+      rememberKey(keys[0]);
       welcomed = true;
       failures = 0;
       lastRev = -1; // po novém spojení platí první snímek bez ohledu na čítač
@@ -333,10 +365,14 @@
       applyState(msg);
     } else if (msg.t === "ack") {
       if (msg.ok === false && ACK_NOTES[msg.reason]) showNote(ACK_NOTES[msg.reason]);
+    } else if (msg.t === "rekey") {
+      if (welcomed) rememberKey(msg.remoteKey); // neplatný klíč rememberKey ignoruje
     } else if (msg.t === "error") {
       if (msg.code === "hello_required") sendHello();
       else if (msg.code === "full") setConn("full");
-      else if (msg.code === "forbidden") stopForbidden();
+      else if (msg.code === "forbidden") {
+        if (welcomed || !tryNextKey()) stopForbidden();
+      }
       else console.warn("Chyba od televize:", msg.code);
     }
   }

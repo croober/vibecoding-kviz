@@ -6,8 +6,13 @@
 //
 // Bezpečnost (kontrakt hráčů § 1 a § 5):
 //   - Role remote (ovladač) se přihlásí jen s klíčem ovladače settings.remoteKey (12 znaků, je jen v QR kódu,
-//     nikdy textem na plátně ani v konzoli); role player (hráč) smí jen join a buzz. O roli rozhoduje
+//     nikdy v konzoli); role player (hráč) smí jen join a buzz. O roli rozhoduje
 //     KvizLinkCore.allowedFor před každou cestou k onKey a onText.
+//   - Na plátně je klíč jen uvnitř QR kódu (dialog i karta na zadání). Textová adresa s klíčem se ukáže jen v dialogu,
+//     když se QR nepodařilo vykreslit (otevírá ho moderátor vědomě); karta na zadání se bez QR neukáže vůbec.
+//   - Výměna klíče: rotateRemoteKey() vytvoří nový klíč a pošle ho zprávou rekey jen připojeným ovladačům
+//     (už se klíčem prokázaly), ty zůstávají připojené; staré QR a odkazy přestanou platit. „Nový kód“
+//     (restart s newToken) mění token i klíč a všechny odpojí, rekey se tam neposílá.
 //   - Každé spojení má omezovač zpráv (RATE_MAX_MESSAGES za RATE_WINDOW_MS, čas z performance.now());
 //     po překročení, odmítnutém klíči nebo rehello se spojení označí k zavření a jeho další zprávy se zahodí.
 //   - Snímek stavu ovladače (snapshot) dostávají jen ovladače; seznam zařízení a karta s QR počítají jen ovladače.
@@ -339,7 +344,7 @@
   function playerWelcomeState(clientId) {
     const res = playerViewFn ? callSafely(playerViewFn, [clientId], "funkce snímku hráče") : { ok: false };
     const view = res.ok ? res.value : null;
-    return view && typeof view === "object" ? view : { rev: ++rev, phase: "off" };
+    return view && typeof view === "object" && !Array.isArray(view) ? view : { rev: ++rev, phase: "off" };
   }
 
   // join a buzz: clientId jen z registru podle spojení, nikdy ze zprávy; ack z návratové hodnoty posluchače.
@@ -434,7 +439,8 @@
       addresses: server.addresses.slice(),
       error: server.error,
       token: settings.token,
-      url: remoteUrl(settings.remoteKey), // s klíčem ovladače: jen do QR kódu
+      url: remoteUrl(settings.remoteKey), // s klíčem ovladače: jen do QR kódu (textem jen v dialogu bez QR)
+      displayUrl: remoteUrl(), // bez klíče
       playerUrl: playerUrl(),
     };
   }
@@ -451,6 +457,14 @@
       saveSettings();
     }
     return start();
+  }
+  // Nový klíč ovladače bez odpojení: dostanou ho jen připojené ovladače, nikdy hráči ani hromadným odesláním.
+  function rotateRemoteKey() {
+    settings.remoteKey = Link.newRemoteKey();
+    saveSettings();
+    const msg = { t: "rekey", remoteKey: settings.remoteKey };
+    clients.list().filter((c) => c.role === "remote" && c.connected).forEach((c) => send(c.connId, msg));
+    changed(); // překreslí QR v dialogu i na kartě
   }
   function onChange(cb) {
     if (typeof cb === "function") listeners.push(cb);
@@ -521,7 +535,7 @@
     context: playerContext,
   };
 
-  window.KvizTvLink = { info, clients: clientList, restart, onChange, qrSvg, setPlayerMode, players };
+  window.KvizTvLink = { info, clients: clientList, restart, rotateRemoteKey, onChange, qrSvg, setPlayerMode, players };
 
   /* ---------- QR kód (globál qrcode z vendor/qrcode.js, balíček qrcode-generator) ---------- */
   const SVG_NS = "http://www.w3.org/2000/svg";
@@ -561,14 +575,15 @@
     return svg;
   }
 
-  // Adresa s tokenem zvýrazněným na konci (vše přes textContent).
+  // Adresa se zvýrazněným tokenem za „t=“ a zbytkem adresy za ním (vše přes textContent).
   function fillUrl(node, url, token) {
     node.textContent = "";
-    const cut = url.lastIndexOf(token);
-    if (cut < 0) { node.textContent = url; return; }
+    const at = url.indexOf("t=" + token);
+    if (at < 0) { node.textContent = url; return; }
+    const cut = at + 2;
     const b = document.createElement("b");
     b.textContent = token;
-    node.append(url.slice(0, cut), b);
+    node.append(url.slice(0, cut), b, url.slice(cut + token.length));
   }
 
   // připravuji (server zatím nic nevrátil) · ready (je adresa) · offline (chyba nebo žádná adresa v síti)
@@ -599,9 +614,8 @@
           <li>Připoj mobil ke stejné Wi-Fi jako televize.</li>
           <li>Naskenuj QR kód fotoaparátem mobilu.</li>
         </ol>
-        <p class="tv-link-noqr" id="tvLinkNoQr" hidden>QR kód se nepodařilo zobrazit. Napiš adresu do prohlížeče v mobilu.</p>
-        <div id="tvLinkAddr">
-          <p class="tv-link-alt muted">Nebo do prohlížeče v mobilu napiš adresu:</p>
+        <p class="tv-link-noqr" id="tvLinkNoQr" hidden>QR kód se nepodařilo zobrazit. Adresu opiš do prohlížeče v mobilu a neukazuj ji hostům.</p>
+        <div id="tvLinkAddr" hidden>
           <code class="tv-link-url" id="tvLinkUrl"></code>
           <p class="tv-link-code">Kód v adrese: <b id="tvLinkToken"></b></p>
         </div>
@@ -657,10 +671,14 @@
         box.appendChild(text);
       }
     }
-    part("tvLinkAddr").hidden = kind !== "ready";
-    if (kind === "ready") {
+    // Textová adresa s klíčem jen bez QR (gate faze-3-list-5, varianta A); jinak se z DOM smaže.
+    part("tvLinkAddr").hidden = !noLib;
+    if (noLib) {
       fillUrl(part("tvLinkUrl"), i.url, i.token);
       part("tvLinkToken").textContent = i.token;
+    } else {
+      part("tvLinkUrl").textContent = "";
+      part("tvLinkToken").textContent = "";
     }
   }
 
@@ -825,7 +843,7 @@
 
   /* ---------- Karta s QR na úvodní obrazovce (jen k zobrazení, bez fokusu) ---------- */
   // Vložená jako první dítě <main>; zobrazuje se jen v pohledu setup (CSS přes body[data-view]).
-  // Bez adresy v síti se skryje, bez knihovny QR ukáže jen adresu textem.
+  // Bez adresy v síti nebo bez QR se skryje: klíč ovladače nesmí na plátno textem.
   const card = document.createElement("aside");
   card.className = "tv-link-card";
   card.id = "tvLinkCard";
@@ -835,8 +853,8 @@
     <div class="tv-link-card-box">
       <div class="tv-link-card-qr"></div>
       <b class="tv-link-card-title">Ovládání z mobilu</b>
-      <p class="tv-link-card-text"></p>
-      <code class="tv-link-card-url"></code>
+      <p class="tv-link-card-text">Naskenuj QR kód fotoaparátem mobilu.</p>
+      <code class="tv-link-card-url" hidden></code>
     </div>`;
   const main = $("main");
   if (main) main.prepend(card);
@@ -853,14 +871,8 @@
     box.textContent = "";
     const svg = url ? qrSvg(url, QR_LABEL) : null;
     if (svg) box.appendChild(svg);
-    box.hidden = !svg;
-    card.querySelector(".tv-link-card-text").textContent = svg
-      ? "Naskenuj QR kód fotoaparátem mobilu."
-      : "QR kód se nepodařilo zobrazit. Napiš adresu do prohlížeče v mobilu.";
-    card.querySelector(".tv-link-card-url").textContent = url ? remoteUrl() : ""; // klíč ovladače nikdy textem
-    card.hidden = !url;
-    card.classList.toggle("no-qr", !svg);
-    document.body.classList.toggle("tv-link-card-on", !!url); // místo vpravo pro kartu, ať nepřekrývá zadání ani bubliny
+    card.hidden = !svg; // bez QR se karta neukáže, adresa ovladače na kartě nikdy není
+    document.body.classList.toggle("tv-link-card-on", !!svg); // místo vpravo pro kartu, ať nepřekrývá zadání ani bubliny
   }
 
   onChange(() => {

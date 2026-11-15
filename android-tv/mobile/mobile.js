@@ -1,6 +1,7 @@
 // Mobilní ovladač kvízu: jen vstup. Nic nepočítá, zobrazuje jen snímek, který pošle televize.
 // Protokol: zprávy hello, key, text a snímek stavu z kontraktu mobilního ovládání (§ 2 a § 3);
 // klíč ovladače a zpráva rekey (výměna klíče bez odpojení): kontrakt hráčů § 1 a § 2.
+// Klíč se po přihlášení z adresy odstraňuje a žije jen v úložišti mobilu (kontrakt hráčů § 6).
 (() => {
   "use strict";
 
@@ -286,6 +287,20 @@
     keys = keyCandidates(key, urlKey);
   }
 
+  // Je klíč opravdu v úložišti? Zpětné přečtení; bez úložiště (anonymní okno) je odpověď ne.
+  function isKeyStored(key) {
+    const data = loadStored();
+    return Boolean(data) && data.remoteKey === key;
+  }
+
+  // Odstraní klíč z adresního řádku a z historie: zůstane jen cesta a token. Při chybě se adresa nemění.
+  function stripKeyFromUrl() {
+    try {
+      if (!new URLSearchParams(location.search).has("k")) return;
+      history.replaceState(null, "", `${location.pathname}?t=${encodeURIComponent(token)}`);
+    } catch { /* adresa zůstane, jak je */ }
+  }
+
   // Televize odmítla klíč: zkusí se další kandidát na novém spojení; false = kandidáti došli.
   function tryNextKey() {
     keys.shift();
@@ -355,6 +370,7 @@
         saveStored();
       }
       rememberKey(keys[0]);
+      if (isKeyStored(keys[0])) stripKeyFromUrl();
       welcomed = true;
       failures = 0;
       lastRev = -1; // po novém spojení platí první snímek bez ohledu na čítač

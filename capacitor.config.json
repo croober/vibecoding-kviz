@@ -1,0 +1,7 @@
+{
+  "appId": "cz.croober.kviz",
+  "appName": "Kvíz",
+  "webDir": "www-android",
+  "android": { "allowMixedContent": false },
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}

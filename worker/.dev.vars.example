@@ -1,0 +1,9 @@
+# lokální tajné hodnoty pro `npm run dev` (zkopíruj jako .dev.vars; v produkci se nastavují jako secrets ve Wrangleru)
+ANTHROPIC_API_KEY=sk-ant-...
+# přístupový token pro generování (bez něj je generování vypnuté), např. `openssl rand -hex 24`
+ACCESS_TOKEN=
+# volitelný basic auth pro celý web i API (když BASIC_AUTH_USER chybí, není vyžadován)
+BASIC_AUTH_USER=
+BASIC_AUTH_PASS=
+# volitelné
+# CLAUDE_MODEL=claude-sonnet-5-5

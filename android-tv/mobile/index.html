@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#f3f1ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121713" media="(prefers-color-scheme: dark)">
+  <title>Ovladač kvízu</title>
+  <link rel="stylesheet" href="/vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="/vendor/phosphor/style.css">
+  <link rel="stylesheet" href="mobile.css">
+</head>
+<body>
+  <h1 class="sr-only">Ovladač kvízu</h1>
+
+  <div class="app" id="app">
+    <header class="status" id="status" data-conn="connecting">
+      <span class="conn" role="status" aria-live="polite">
+        <i class="ph ph-circle-notch spin" id="conn-icon" aria-hidden="true"></i>
+        <span id="conn-text">Připojuji k televizi…</span>
+      </span>
+      <span class="ctx">
+        <i class="ph ph-lock-simple" id="ctx-lock" aria-hidden="true" hidden></i>
+        <span id="ctx-text"></span>
+      </span>
+    </header>
+    <p class="conn-hint" id="conn-hint" hidden></p>
+
+    <section class="write" aria-label="Psaní na televizi">
+      <p class="write-idle" id="write-idle" hidden>
+        <i class="ph ph-keyboard" aria-hidden="true"></i>
+        <span id="write-idle-text">Vyber pole na televizi</span>
+      </p>
+      <form class="write-form" id="write-form" autocomplete="off">
+        <label for="text-area" id="text-label">Téma kvízu</label>
+        <div class="write-row">
+          <div class="field-wrap">
+            <textarea id="text-area" class="text-input text-area" rows="1" enterkeyhint="enter" autocomplete="off" maxlength="500" placeholder="např. sport, vesmír" disabled></textarea>
+            <input type="password" id="text-input" class="text-input" enterkeyhint="done" autocomplete="off" maxlength="500" disabled hidden>
+            <button type="button" class="eye" id="eye" aria-pressed="false" aria-label="Zobrazit hodnotu" hidden>
+              <i class="ph ph-eye" id="eye-icon" aria-hidden="true"></i>
+            </button>
+          </div>
+          <button type="submit" class="btn-done" id="done" disabled>
+            <i class="ph ph-check" aria-hidden="true"></i>
+            <span class="done-text">Hotovo</span>
+          </button>
+        </div>
+        <p class="mask-note" id="mask-note" hidden>Z bezpečnostních důvodů se hodnota z televize nezobrazuje.</p>
+      </form>
+    </section>
+
+    <div class="teams" id="teams" role="group" aria-label="Výběr týmu">
+      <button type="button" class="key team" data-action="team1" aria-label="Vybrat tým 1">1</button>
+      <button type="button" class="key team" data-action="team2" aria-label="Vybrat tým 2">2</button>
+      <button type="button" class="key team" data-action="team3" aria-label="Vybrat tým 3">3</button>
+      <button type="button" class="key team" data-action="team4" aria-label="Vybrat tým 4">4</button>
+      <button type="button" class="key team-all" data-action="all" aria-label="Vybrat všechny týmy">Vše</button>
+    </div>
+
+    <div class="points" id="points" role="group" aria-label="Body vybranému týmu">
+      <button type="button" class="key" data-action="minus" aria-label="Odebrat bod vybranému týmu">
+        <span class="key-row"><i class="ph ph-minus" aria-hidden="true"></i><span>bod</span></span>
+      </button>
+      <button type="button" class="key soft" data-action="plus" aria-label="Přidat bod vybranému týmu">
+        <span class="key-row"><i class="ph ph-plus" aria-hidden="true"></i><span>bod</span></span>
+      </button>
+    </div>
+
+    <div class="answers" id="answers" role="group" aria-label="Odpovědi">
+      <button type="button" class="key answer" data-action="answer1" aria-label="Odpověď A">A</button>
+      <button type="button" class="key answer" data-action="answer2" aria-label="Odpověď B">B</button>
+      <button type="button" class="key answer" data-action="answer3" aria-label="Odpověď C">C</button>
+    </div>
+
+    <div class="dpad" id="dpad" role="group" aria-label="Ovladač">
+      <span class="dpad-gap" aria-hidden="true"></span>
+      <button type="button" class="key" data-action="up" aria-label="Nahoru"><i class="ph ph-caret-up" aria-hidden="true"></i></button>
+      <span class="dpad-gap" aria-hidden="true"></span>
+      <button type="button" class="key" data-action="left" aria-label="Doleva"><i class="ph ph-caret-left" aria-hidden="true"></i></button>
+      <button type="button" class="key ok" data-action="ok" aria-label="OK – potvrdit">OK</button>
+      <button type="button" class="key" data-action="right" aria-label="Doprava"><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+      <button type="button" class="key ghost" data-action="back"><i class="ph ph-arrow-u-up-left" aria-hidden="true"></i><small>Zpět</small></button>
+      <button type="button" class="key" data-action="down" aria-label="Dolů"><i class="ph ph-caret-down" aria-hidden="true"></i></button>
+      <button type="button" class="key ghost" data-action="menu"><i class="ph ph-list" aria-hidden="true"></i><small>Menu</small></button>
+    </div>
+  </div>
+
+  <p class="note" id="note" role="status" aria-live="polite">
+    <i class="ph ph-warning-circle" aria-hidden="true"></i>
+    <span id="note-text"></span>
+  </p>
+
+  <section class="no-token" id="no-token" hidden>
+    <i class="ph ph-qr-code" aria-hidden="true"></i>
+    <h2>Naskenuj QR kód na televizi</h2>
+    <p>Najdeš ho v menu aplikace kvízu → Ovládání z mobilu.</p>
+  </section>
+
+  <script src="mobile.js"></script>
+</body>
+</html>

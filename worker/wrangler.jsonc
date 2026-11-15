@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kviz",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-13",
+  "compatibility_flags": ["nodejs_compat"],
+  // Vlastní doména (potřebná pro IP omezení, viz ../docs/cloudflare.md); adresa workers.dev je vypnutá,
+  // jinak by šlo IP omezení obejít. Zde je ZÁSTUPNÁ doména kviz.example.cz: před nasazením ji nahraď svou.
+  "workers_dev": false,
+  "routes": [{ "pattern": "kviz.example.cz", "custom_domain": true }],
+  // omezení počtu požadavků z jedné IP (přibližné, počítá se zvlášť v každé lokalitě Cloudflare):
+  // AUTH_LIMITER brzdí hádání hesla a tokenu, GENERATE_LIMITER chrání drahé volání Claude
+  "ratelimits": [
+    // 150/min: klient při startu kvízu přednačítá všechny obrázky (až desítky požadavků na /api/img najednou)
+    { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 150, "period": 60 } },
+    { "name": "GENERATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }
+  ],
+  // statika z ../public; Worker běží první pro všechny cesty, aby basic auth chránil i web
+  "assets": {
+    "directory": "../public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  }
+}

@@ -1,0 +1,220 @@
+/* TV nadstavba – vkládá se jen do APK. Pravidla platí pouze pod body.tv. */
+
+/* dialog Nastavení serveru: popisky vlevo nad poli */
+#tvSettingsDialog label { display: block; text-align: left; margin: 16px 0 6px; }
+#tvSettingsDialog .extra-hint:not(label) { text-align: left; }
+
+/* výsledek testu spojení v dialogu Nastavení serveru */
+#tvSettingsDialog .tv-test-result { margin: 14px 0 0; font-weight: 600; text-align: left; }
+#tvSettingsDialog .tv-test-result.ok { color: var(--good, #1f7a46); }
+#tvSettingsDialog .tv-test-result.bad { color: var(--bad, #b3261e); }
+
+/* ---------- Ovládání ovladačem ---------- */
+/* okraje proti overscanu (některé TV ořezávají okraj obrazu); doladit podle televize */
+body.tv { box-sizing: border-box; padding: 1.5vh 2vw; }
+
+/* dotykové a klávesové nápovědy nemají na TV smysl */
+body.tv .desktop-only, body.tv .menu-panel .desktop-only, body.tv .menu-panel kbd { display: none !important; }
+
+/* výrazný fokus na dálku; :focus vedle :focus-visible pro starší WebView */
+body.tv :focus { outline: 5px solid var(--accent); outline-offset: 3px; }
+body.tv :focus:not(:focus-visible) { outline: 5px solid var(--accent); outline-offset: 3px; }
+body.tv input:focus, body.tv textarea:focus { outline-offset: 0; }
+body.tv button:focus, body.tv [role="button"]:focus, body.tv .team:focus, body.tv .level input:focus + span {
+  transform: scale(1.04);
+  transition: transform .12s ease;
+}
+/* skryté radio v kartách obtížnosti: rámec kreslí karta */
+body.tv .level input:focus { outline: none; }
+body.tv .level input:focus + span { outline: 5px solid var(--accent); outline-offset: 3px; }
+
+/* diagnostika kláves */
+#tvKeysDialog .tv-key-info {
+  margin: 12px 0; padding: 18px 20px; border-radius: 14px; background: var(--surface, #f4f1ea);
+  font-family: ui-monospace, Consolas, monospace; font-size: 1.1rem; line-height: 1.5; word-break: break-word;
+}
+
+/* bubliny s tématy: při fokusu stojí a jsou zvýrazněné jako při najetí myší */
+body.tv .bubbles.paused .bubble { animation-play-state: paused; }
+body.tv .bubble:focus { scale: 1.1; opacity: 1; z-index: 5 !important; border-color: var(--tint); }
+body.tv .tv-bubble-hint { margin: .6rem 0 0; text-align: center; font-size: .95rem; }
+
+/* průvodce mapování tlačítek ovladače */
+body.tv .tv-map-step { font-size: 1.6rem; font-weight: 700; margin: 1rem 0; }
+
+/* vysvětlivky ovládání nad lištou týmů, jen v kvízu */
+/* lišta je grid (týmy v 1. řádku); vysvětlivky jako vlastní řádek pod týmy přes celou šířku */
+body.tv .tv-legend { display: none; grid-column: 1 / -1; grid-row: 2; margin: -4px 0 0; text-align: center; font-size: .68rem; line-height: 1.4; color: var(--muted); opacity: .85; }
+body.tv[data-view="quiz"]:not(.teams-big) .tv-legend { display: block; }
+body.tv .tv-legend b { color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: .4em; padding: 0 .35em; white-space: nowrap; }
+body.tv .tv-legend span { white-space: nowrap; margin: 0 .4em; }
+/* čísla u týmů se v TV nepoužívají (body dávají kanály), schovat */
+body.tv .scoreboard .team .key { display: none; }
+
+/* token s tlačítkem Zobrazit */
+body.tv .tv-token-row { display: flex; gap: .6rem; align-items: stretch; }
+body.tv .tv-token-row .token-input { flex: 1; min-width: 0; }
+
+/* ---------- Výrazné zvýraznění (fotka z TV: rámec týmu ořezával kontejner a byly vidět jen rohy) ---------- */
+body.tv:not(.teams-big) .scoreboard .teams { padding: 8px 12px; overflow: visible; }
+/* vybraný tým pro body: tlustý rámec, podkladová barva, zvětšení */
+body.tv .scoreboard .team.tv-selected {
+  outline: 6px solid var(--accent); outline-offset: 3px;
+  background: var(--accent-soft); transform: scale(1.07);
+  box-shadow: 0 0 0 6px var(--accent-soft), 0 8px 24px rgba(0, 0, 0, .35);
+  position: relative; z-index: 2;
+}
+/* odpověď s fokusem: plná výplň a tlustý rámec */
+body.tv .answer:focus {
+  outline: 6px solid var(--accent); outline-offset: 3px;
+  background: var(--accent-soft); transform: scale(1.02);
+}
+
+/* ---------- Ovládání TV: seznam akcí a jejich tlačítek ---------- */
+#tvKeysDialog { width: min(94vw, 960px); max-height: 94vh; overflow-y: auto; }
+#tvKeysDialog .tv-key-rows { display: grid; gap: 6px; margin: 10px 0; }
+#tvKeysDialog .tv-key-row { display: grid; grid-template-columns: 1.3fr 1.2fr auto auto; gap: 10px; align-items: center; text-align: left; padding: 4px 10px; border-radius: 10px; }
+#tvKeysDialog .tv-key-row.capturing { background: var(--accent-soft); }
+#tvKeysDialog .tv-key-name { font-weight: 600; }
+#tvKeysDialog .tv-key-cur b { background: var(--bg); border: 1px solid var(--border); border-radius: .4em; padding: 0 .5em; }
+#tvKeysDialog .tv-key-cur small { color: var(--muted); }
+#tvKeysDialog .tv-key-row .btn { padding: 6px 14px; font-size: .95rem; }
+#tvKeysDialog .tv-key-msg { min-height: 1.5em; margin: 6px 0; font-weight: 600; text-align: left; }
+#tvKeysDialog .tv-key-msg.bad { color: var(--bad, #b3261e); }
+
+/* rychlé „Hrát znovu“ pod polem s tématem */
+body.tv .tv-replay { display: flex; align-items: center; gap: .5rem; margin: .8rem auto 0; max-width: 100%; }
+body.tv .tv-replay[hidden] { display: none; }
+body.tv .tv-replay span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Kolik týmů hraje? */
+#tvTeamsDialog .tv-team-count { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 12px; }
+#tvTeamsDialog .tv-team-count .btn { font-size: 1.2rem; padding: 12px 22px; }
+#tvTeamsDialog .tv-team-count .btn.tv-current { border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+
+/* Výběr ikony týmu: vždy celý na obrazovce (uprostřed, s posuvníkem když se nevejde), ne u tlačítka, kam ho umístí app.js */
+body.tv .emoji-picker { left: 50% !important; top: 50% !important; right: auto !important; bottom: auto !important; transform: translate(-50%, -50%); animation: none; width: min(760px, 94vw); max-height: 92vh; overflow-y: auto; }
+body.tv .emoji-grid { max-height: none; overflow: visible; gap: 6px; }
+body.tv .emoji { font-size: 1.3rem; }
+
+/* velikost rozhraní v dialogu Ovládání TV */
+#tvKeysDialog .tv-size-row { display: grid; grid-template-columns: 1.3fr auto auto auto; gap: 10px; align-items: center; padding: 6px 10px; margin-top: 4px; text-align: left; }
+#tvKeysDialog .tv-size-row b { min-width: 3.5em; text-align: center; }
+#tvKeysDialog .tv-size-row .btn { padding: 6px 14px; font-size: .95rem; }
+
+/* sbalitelné bloky v Ovládání TV */
+#tvKeysDialog .tv-sec { border: 1px solid var(--border); border-radius: 14px; margin: 10px 0; padding: 0 12px; text-align: left; }
+#tvKeysDialog .tv-sec[open] { background: var(--bg); padding-bottom: 8px; }
+#tvKeysDialog .tv-sec > summary { display: flex; align-items: baseline; gap: 12px; padding: 12px 4px; font-weight: 700; font-size: 1.1rem; cursor: pointer; list-style: none; }
+#tvKeysDialog .tv-sec > summary::-webkit-details-marker { display: none; }
+#tvKeysDialog .tv-sec > summary small { margin-left: auto; font-weight: 400; color: var(--muted); }
+#tvKeysDialog .tv-sec > summary::after { content: "▾"; color: var(--muted); }
+#tvKeysDialog .tv-sec[open] > summary::after { content: "▴"; }
+#tvKeysDialog .tv-sec > summary:focus { border-radius: 10px; }
+
+/* neutrální místo pro fokus (tv-remote.js), bez rámečku a mimo tok */
+#tvAnchor { position: fixed; top: 0; left: 0; width: 1px; height: 1px; outline: none; }
+#tvAnchor:focus { outline: none; }
+
+/* Nastavení týmů při větším písmu (užší a nižší rozložení): karty se přizpůsobí výšce i šířce okna, ať jsou vidět celé */
+body.tv.teams-big .teams {
+  grid-template-columns: repeat(var(--cols, 3), min(320px, calc((100vw - 150px - (var(--cols, 3) - 1) * 20px) / var(--cols, 3))));
+  grid-auto-rows: min(400px, max(240px, calc(100vh - 360px)));
+  gap: 16px;
+}
+body.tv.teams-big .team-actions { padding-top: 4px; }
+
+/* ---------- Ovládání z mobilu: QR kód a připojená zařízení ---------- */
+#tvLinkDialog { width: min(94vw, 1040px); max-width: min(94vw, 1040px); max-height: 94vh; overflow-y: auto; }
+#tvLinkDialog .tv-link-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 36px; align-items: start; text-align: left; }
+#tvLinkDialog .tv-link-body.no-qr { grid-template-columns: minmax(0, 1fr); }
+
+/* QR: vždy černá na bílé (i v tmavém vzhledu), okraj 4 moduly je uvnitř SVG */
+#tvLinkDialog .tv-link-qr {
+  width: clamp(220px, 42vh, 440px); aspect-ratio: 1; border-radius: 16px; overflow: hidden;
+  background: #fff; border: 1px solid var(--border); line-height: 0; box-sizing: border-box;
+}
+#tvLinkDialog .tv-link-qr svg, body.tv .tv-link-card-qr svg { display: block; width: 100%; height: 100%; shape-rendering: crispEdges; }
+/* připravuji / bez sítě: stejné místo, čárkovaný rámec místo QR */
+#tvLinkDialog .tv-link-qr.empty {
+  background: transparent; border: 2px dashed var(--border); line-height: 1.4;
+  display: grid; place-content: center; justify-items: center; gap: 10px; padding: 20px; text-align: center;
+}
+#tvLinkDialog .tv-link-qr.empty i { font-size: 3rem; color: var(--muted); }
+#tvLinkDialog .tv-link-qr.offline i { color: var(--bad); }
+#tvLinkDialog .tv-link-qr.empty b { font-size: 1.2rem; }
+
+#tvLinkDialog .tv-link-steps { margin: 0; padding-left: 1.4em; font-size: 1.2rem; line-height: 1.5; }
+#tvLinkDialog .tv-link-noqr { margin: 0 0 6px; font-size: 1.2rem; font-weight: 600; }
+#tvLinkDialog .tv-link-alt { margin: 18px 0 6px; font-size: 1.05rem; }
+#tvLinkDialog .tv-link-url {
+  display: block; padding: 12px 16px; border-radius: 14px; background: var(--bg); color: var(--text);
+  font-family: ui-monospace, Consolas, monospace; font-size: 1.5rem; font-weight: 700; line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+#tvLinkDialog .no-qr .tv-link-url { font-size: 2rem; }
+#tvLinkDialog .tv-link-url b, #tvLinkDialog .tv-link-code b { color: var(--accent); }
+#tvLinkDialog .tv-link-code { margin: 10px 0 0; font-size: 1.2rem; }
+#tvLinkDialog .tv-link-code b { font-family: ui-monospace, Consolas, monospace; font-size: 1.4rem; letter-spacing: .12em; }
+
+#tvLinkDialog .tv-link-status { display: flex; align-items: center; gap: 10px; margin: 22px 0 8px; font-size: 1.2rem; font-weight: 700; }
+#tvLinkDialog .tv-link-status i { font-size: 1.6rem; color: var(--muted); }
+#tvLinkDialog .tv-link-status.ok i { color: var(--good); }
+#tvLinkDialog .tv-link-status.bad i { color: var(--bad); }
+
+#tvLinkDialog .tv-link-devices { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#tvLinkDialog .tv-link-devices li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 1.1rem;
+}
+#tvLinkDialog .tv-link-devices li.more { display: block; color: var(--muted); }
+#tvLinkDialog .tv-link-devices li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+#tvLinkDialog .tv-link-devices i { font-size: 1.3rem; color: var(--muted); }
+#tvLinkDialog .tv-link-devices small { font-size: 1rem; color: var(--muted); }
+#tvLinkDialog .tv-link-devices .slow small i { color: var(--warn); vertical-align: -.15em; }
+#tvLinkDialog .tv-link-devices .slow small { color: var(--text); }
+
+#tvLinkDialog .tv-link-msg { min-height: 1.5em; margin: 10px 0 0; font-weight: 600; text-align: left; }
+#tvLinkDialog .tv-link-msg.bad { color: var(--bad, #b3261e); }
+
+/* vstup z Nastavení serveru a nápověda na zadání */
+#tvSettingsDialog .tv-link-open { margin: 4px 0 0; }
+body.tv .tv-link-hint { color: var(--text); }
+body.tv .tv-link-hint i { vertical-align: -.12em; margin-right: .3em; }
+
+/* ---------- Karta s QR na úvodní obrazovce ---------- */
+/* Sticky box nulové výšky jako první dítě <main>: neposune zadání a při posouvání pokročilého zadání zůstane vidět.
+   Vpravo se pro ni rezervuje místo (padding main + pravý okraj bublin), takže nepřekrývá formulář ani bubliny. */
+body.tv { --tv-qr: clamp(180px, 28vh, 300px); --tv-qr-card: calc(var(--tv-qr) + 28px); --tv-qr-reserve: calc(var(--tv-qr-card) + 24px); }
+body.tv .tv-link-card {
+  position: sticky; top: calc(3vh + 4px); z-index: 4; align-self: flex-end; flex: none;
+  width: var(--tv-qr-card); height: 0; margin-right: calc(-1 * var(--tv-qr-reserve)); overflow: visible;
+  pointer-events: none;
+}
+body.tv:not([data-view="setup"]) .tv-link-card { display: none; }
+body.tv .tv-link-card-box {
+  box-sizing: border-box; width: var(--tv-qr-card); padding: 14px 14px 12px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); color: var(--text);
+}
+body.tv .tv-link-card-qr { aspect-ratio: 1; line-height: 0; border-radius: 8px; overflow: hidden; background: #fff; }
+body.tv .tv-link-card-title { display: block; margin-top: 10px; font-size: 1.05rem; font-weight: 700; }
+body.tv .tv-link-card-text { margin: 2px 0 0; font-size: .9rem; line-height: 1.35; }
+body.tv .tv-link-card-url {
+  display: block; margin-top: 6px; font-family: ui-monospace, Consolas, monospace; font-size: .8rem; line-height: 1.35; overflow-wrap: anywhere;
+}
+/* bez knihovny QR: jen nadpis, věta a adresa větším písmem */
+body.tv .tv-link-card.no-qr .tv-link-card-title { margin-top: 0; }
+body.tv .tv-link-card.no-qr .tv-link-card-url { font-size: 1rem; font-weight: 700; }
+/* místo vpravo jen na zadání a jen když je karta vidět */
+body.tv.tv-link-card-on[data-view="setup"] main { padding-right: calc(24px + var(--tv-qr-reserve)); }
+body.tv.tv-link-card-on[data-view="setup"] .bubbles { right: var(--tv-qr-reserve); }
+
+/* úzké okno (ladění v prohlížeči) */
+@media (max-width: 820px) {
+  #tvLinkDialog .tv-link-body { grid-template-columns: minmax(0, 1fr); }
+  #tvLinkDialog .tv-link-qr { width: min(60vw, 42vh); justify-self: center; }
+  /* karta pod zadáním místo bočního sloupce */
+  body.tv .tv-link-card { position: static; order: 1; align-self: center; height: auto; margin: 16px 0 0; }
+  body.tv.tv-link-card-on[data-view="setup"] main { padding-right: 24px; }
+  body.tv.tv-link-card-on[data-view="setup"] .bubbles { right: 0; }
+}

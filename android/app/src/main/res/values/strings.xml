@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kvíz</string>
+    <string name="title_activity_main">Kvíz</string>
+    <string name="package_name">cz.croober.kviz</string>
+    <string name="custom_url_scheme">cz.croober.kviz</string>
+</resources>

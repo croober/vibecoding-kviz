@@ -1,3 +1,12 @@
 node_modules
 .env
 .DS_Store
+.claude-work
+www-android
+android-tv/tv-config.json
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+android/app/src/main/assets/public
+android/version.properties

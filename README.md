@@ -80,6 +80,10 @@ Menu ☰ → **Archiv**: počet vygenerovaných kvízů a otázek a seznam všec
 
 Archiv je v `localStorage` (klíč `kviz-archive-v1`), tedy jen v daném prohlížeči.
 
+## Android TV
+
+Kvíz jde zabalit do aplikace pro Android TV (Capacitor): ovládání dálkovým ovladačem, ovládání z mobilu přes QR kód (televize sama servíruje ovládací stránku na místní síti), vlastní zadání a nastavení serveru přímo v televizi. Web a lokální verze se tím nemění. Sestavení, instalace, ovládání z mobilu a kontrolní seznam: [docs/ANDROID.md](docs/ANDROID.md), přehled souborů TV vrstvy: [android-tv/README.md](android-tv/README.md).
+
 ## Struktura
 
 - `images.js` – obrázkové otázky: Wikipedia API, kontrola obrázků přes vision, proxy `/api/img`.

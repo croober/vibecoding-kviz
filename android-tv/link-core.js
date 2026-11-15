@@ -293,6 +293,33 @@
     };
   }
 
+  function isPositiveFinite(n) {
+    return typeof n === "number" && Number.isFinite(n) && n > 0;
+  }
+
+  // Omezovač počtu zpráv jednoho spojení: nejvýš `max` povolených volání v klouzavém okně `windowMs`.
+  // Čas dodává volající (testovatelné bez čekání). Chybná konfigurace nebo neplatný čas = vždy odmítnout.
+  function createRateLimiter(max, windowMs) {
+    var valid = isPositiveFinite(max) && isPositiveFinite(windowMs);
+    var times = [];
+    var last = -Infinity;
+    return {
+      allow: function (now) {
+        if (!valid || typeof now !== "number" || !Number.isFinite(now)) return false;
+        // Hodiny šly zpět: staré záznamy by jinak blokovaly spojení, dokud čas nedožene minulost.
+        if (now < last) times.length = 0;
+        last = now;
+        var expired = 0;
+        while (expired < times.length && times[expired] <= now - windowMs) expired++;
+        if (expired > 0) times.splice(0, expired);
+        // Zapisuje se jen přijaté volání, takže pole nikdy nepřeroste `max`.
+        if (times.length >= max) return false;
+        times.push(now);
+        return true;
+      }
+    };
+  }
+
   // Pole snímku z aktivního textového pole na TV. Hodnota hesla TV nikdy neopustí.
   function fieldView(field) {
     if (!isPlainObject(field)) return null;
@@ -353,6 +380,6 @@
   root.KvizLinkCore = {
     PROTOCOL: PROTOCOL, LIMITS: LIMITS, ROLES: ROLES, REMOTE_KEY_LENGTH: REMOTE_KEY_LENGTH, TOKEN_ALPHABET: TOKEN_ALPHABET, REMOTE_ACTIONS: REMOTE_ACTIONS,
     parseMessage: parseMessage, commandOf: commandOf, newToken: newToken, newRemoteKey: newRemoteKey, buildUrl: buildUrl, buildPlayerUrl: buildPlayerUrl, pickAddress: pickAddress,
-    allowedFor: allowedFor, createClients: createClients, fieldView: fieldView, stateView: stateView, sameState: sameState
+    allowedFor: allowedFor, createClients: createClients, createRateLimiter: createRateLimiter, fieldView: fieldView, stateView: stateView, sameState: sameState
   };
 })(typeof window !== "undefined" ? window : globalThis);

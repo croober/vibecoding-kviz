@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import "./core.js";
 import "./link-core.js";
 
-const { PROTOCOL, LIMITS, REMOTE_KEY_LENGTH, allowedFor, newRemoteKey, buildPlayerUrl, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, fieldView, stateView, sameState } = globalThis.KvizLinkCore;
+const { PROTOCOL, LIMITS, REMOTE_KEY_LENGTH, allowedFor, newRemoteKey, buildPlayerUrl, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, createRateLimiter, fieldView, stateView, sameState } = globalThis.KvizLinkCore;
 
 const parse = (obj) => parseMessage(JSON.stringify({ v: PROTOCOL, ...obj }));
 const BAD = { ok: false, code: "bad_message" };
@@ -504,4 +504,63 @@ test("sameState: ignoruje rev, pozná změnu v hloubce", () => {
   assert.equal(sameState(a, stateView("remote", noQuiz)), false);
   assert.equal(sameState(stateView("remote", noQuiz), stateView("remote", { ...noQuiz, rev: 1 })), true);
   assert.equal(sameState(null, a), false);
+});
+
+test("createRateLimiter: 30 volání projde, 31. v čase 30 ne", () => {
+  const rl = createRateLimiter(30, 1000);
+  for (let t = 0; t < 30; t++) assert.equal(rl.allow(t), true);
+  assert.equal(rl.allow(30), false);
+});
+
+test("createRateLimiter: odmítnutá volání se nezapočítají", () => {
+  const rl = createRateLimiter(30, 1000);
+  for (let i = 0; i < 30; i++) assert.equal(rl.allow(0), true);
+  for (let i = 0; i < 100; i++) assert.equal(rl.allow(500), false);
+  assert.equal(rl.allow(1000), true);
+});
+
+test("createRateLimiter: okno je klouzavé a hranice patří do nového okna", () => {
+  const rl = createRateLimiter(30, 1000);
+  for (let i = 0; i < 30; i++) rl.allow(0);
+  assert.equal(rl.allow(999), false);
+  assert.equal(rl.allow(1000), true);
+});
+
+test("createRateLimiter: po 10 000 voláních projde jen max za okno (zápis jen při přijetí)", () => {
+  const rl = createRateLimiter(3, 1000);
+  let allowed = 0;
+  for (let i = 0; i < 10000; i++) if (rl.allow(i)) allowed++;
+  assert.equal(allowed, 30);
+  assert.equal(rl.allow(100000), true);
+});
+
+test("createRateLimiter: čas jdoucí zpět nezpůsobí trvalé odmítání", () => {
+  const rl = createRateLimiter(1, 1000);
+  assert.equal(rl.allow(5000), true);
+  assert.equal(rl.allow(5001), false);
+  assert.equal(rl.allow(10), true);
+  assert.equal(rl.allow(11), false);
+});
+
+test("createRateLimiter: neplatný čas vrací false a nevyhazuje", () => {
+  const rl = createRateLimiter(30, 1000);
+  for (const bad of [NaN, undefined, "5", null, Infinity, -Infinity, {}]) assert.equal(rl.allow(bad), false);
+  assert.equal(rl.allow(0), true);
+});
+
+test("createRateLimiter: chybná konfigurace odmítá vše", () => {
+  const configs = [[0, 1000], [-1, 1000], [30, 0], [30, -5], [NaN, NaN], [Infinity, 1000], [30, Infinity], ["30", 1000], []];
+  for (const args of configs) {
+    const rl = createRateLimiter(...args);
+    assert.equal(rl.allow(0), false);
+    assert.equal(rl.allow(5000), false);
+  }
+});
+
+test("createRateLimiter: dva omezovače se neovlivňují", () => {
+  const a = createRateLimiter(1, 1000);
+  const b = createRateLimiter(1, 1000);
+  assert.equal(a.allow(0), true);
+  assert.equal(a.allow(1), false);
+  assert.equal(b.allow(1), true);
 });

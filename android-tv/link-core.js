@@ -169,12 +169,37 @@
     return c.getRandomValues(new Uint32Array(1))[0] / 4294967296;
   }
 
+  // Porovnání tajemství v konstantním čase vůči obsahu: cyklus projde všechny znaky bez předčasného konce,
+  // aby doba odpovědi neprozradila, kde je první neshoda. Délka se prozradit smí (klíč má pevnou délku).
+  function sameSecret(a, b) {
+    if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    return diff === 0;
+  }
+
+  // Ovladač projde, jen když TV má nastavený klíč a zpráva nese tentýž. Bez klíče na TV se nepřipojí nikdo.
+  function remoteAuthorized(msg, auth) {
+    var expected = auth && auth.remoteKey;
+    if (typeof expected !== "string" || expected === "") return false;
+    return sameSecret(msg.remoteKey, expected);
+  }
+
+  // Které zprávy smí role poslat (kontrakt hráčů § 3). `hello` smí každá známá role.
+  var PERMISSIONS = { remote: ["key", "text"], player: ["join", "buzz"] };
+
+  function allowedFor(role, type) {
+    if (typeof role !== "string" || !Object.prototype.hasOwnProperty.call(PERMISSIONS, role)) return false;
+    return type === "hello" || PERMISSIONS[role].indexOf(type) >= 0;
+  }
+
   // Registr klientů (mobilů). TV je autorita: drží identitu, `resume` a poslední přijaté `seq`.
   // Klient se po výpadku nemaže, aby na něj šlo navázat; při zaplnění se uvolní nejstarší odpojený.
-  // Klient: { clientId, resume, role, name, connId, connected, lastSeq }
+  // Klient: { clientId, resume, role, name, connId, connected, lastSeq }; `name` má jen ovladač, hráč "".
   function createClients(options) {
     var opts = options || {};
     var max = opts.max > 0 ? opts.max : 16;
+    var maxPlayers = opts.maxPlayers > 0 ? opts.maxPlayers : LIMITS.players;
     var random = opts.random || secureRandom;
     var clients = [];          // v pořadí vzniku
     var byConnId = {};         // connId -> klient (jen připojení)
@@ -205,11 +230,21 @@
       return id;
     }
 
+    // Připojení hráči kromě `except` (ten, kdo se právě navazuje, své místo neobsazuje dvakrát).
+    function connectedPlayers(except) {
+      var count = 0;
+      for (var i = 0; i < clients.length; i++) {
+        var c = clients[i];
+        if (c !== except && c.connected && c.role === "player") count++;
+      }
+      return count;
+    }
+
     function create(connId, msg) {
       if (!freeSlot()) return { ok: false, code: "full" };
       var client = {
         clientId: uniqueId(msg.clientId), resume: randomText(RESUME_LENGTH, random), role: msg.role,
-        name: msg.name || "", connId: connId, connected: true, lastSeq: -1
+        name: msg.role === "remote" ? msg.name || "" : "", connId: connId, connected: true, lastSeq: -1
       };
       clients.push(client);
       byConnId[connId] = client;
@@ -217,17 +252,23 @@
     }
 
     return {
-      // Zpracuje ověřený `hello`. Výsledek: { ok, client, created, replaced? } nebo { ok: false, code }.
-      hello: function (connId, msg) {
-        if (!msg || msg.role !== "remote") return { ok: false, code: "bad_message" };
+      // Zpracuje ověřený `hello` podle pravidel 1–6 (kontrakt hráčů § 3); `auth = { remoteKey }` dodává TV.
+      // Výsledek: { ok, client, created, replaced? } nebo { ok: false, code }.
+      hello: function (connId, msg, auth) {
+        if (!msg || ROLES.indexOf(msg.role) < 0) return { ok: false, code: "bad_message" };
+        // Klíč se ověří dřív, než se registr jakkoli změní – odmítnutí nesmí nikoho odpojit.
+        if (msg.role === "remote" && !remoteAuthorized(msg, auth)) return { ok: false, code: "forbidden" };
         if (byConnId[connId]) unbind(byConnId[connId]);   // druhý hello na témže spojení
-        var known = find(msg.clientId);
-        if (!known || known.resume !== msg.resume) return create(connId, msg);
+        var found = find(msg.clientId);
+        // Role se přes `resume` nepřenáší: hráč se cizím `resume` ovladače nestane ovladačem a naopak.
+        var known = found && found.resume === msg.resume && found.role === msg.role ? found : null;
+        if (msg.role === "player" && connectedPlayers(known) >= maxPlayers) return { ok: false, code: "full" };
+        if (!known) return create(connId, msg);
         var replaced = known.connected && known.connId !== connId ? known.connId : undefined;
         unbind(known);
         known.connId = connId;
         known.connected = true;
-        if (msg.name !== undefined) known.name = msg.name;
+        if (msg.role === "remote" && msg.name !== undefined) known.name = msg.name;
         byConnId[connId] = known;
         var result = { ok: true, client: known, created: false };
         if (replaced !== undefined) result.replaced = replaced;
@@ -312,6 +353,6 @@
   root.KvizLinkCore = {
     PROTOCOL: PROTOCOL, LIMITS: LIMITS, ROLES: ROLES, REMOTE_KEY_LENGTH: REMOTE_KEY_LENGTH, TOKEN_ALPHABET: TOKEN_ALPHABET, REMOTE_ACTIONS: REMOTE_ACTIONS,
     parseMessage: parseMessage, commandOf: commandOf, newToken: newToken, newRemoteKey: newRemoteKey, buildUrl: buildUrl, buildPlayerUrl: buildPlayerUrl, pickAddress: pickAddress,
-    createClients: createClients, fieldView: fieldView, stateView: stateView, sameState: sameState
+    allowedFor: allowedFor, createClients: createClients, fieldView: fieldView, stateView: stateView, sameState: sameState
   };
 })(typeof window !== "undefined" ? window : globalThis);

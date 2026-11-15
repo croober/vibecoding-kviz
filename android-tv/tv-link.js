@@ -1,7 +1,16 @@
 // TV nadstavba, část mobilního ovládání: napojí nativní plugin KvizLink (WebSocket server na TV) na obsluhu kláves.
 // Příkaz z mobilu se nepřekládá na volání funkcí, ale na událost klávesy s příznakem tvLink, kterou zpracuje stávající kód
 // (stejná navigace, zvuky i potvrzovací dotazy jako z ovladače). Vkládá se jen do APK (android-tv/prepare.mjs) jako poslední TV skript.
-// Rozhraní: kontrakt mobilního ovládání § 1 (plugin), § 2 (protokol), § 3 (snímek), § 4 (úložiště).
+// Rozhraní: kontrakt mobilního ovládání § 1 (plugin), § 2 (protokol), § 3 (snímek), § 4 (úložiště);
+// role, klíč ovladače a směrování zpráv: kontrakt hráčů (.claude-work/2026-11-15-hraci-buzzer/kontrakt.md) § 1, § 2, § 5.
+//
+// Bezpečnost (kontrakt hráčů § 1 a § 5):
+//   - Role remote (ovladač) se přihlásí jen s klíčem ovladače settings.remoteKey (12 znaků, je jen v QR kódu,
+//     nikdy textem na plátně ani v konzoli); role player (hráč) smí jen join a buzz. O roli rozhoduje
+//     KvizLinkCore.allowedFor před každou cestou k onKey a onText.
+//   - Každé spojení má omezovač zpráv (RATE_MAX_MESSAGES za RATE_WINDOW_MS, čas z performance.now());
+//     po překročení, odmítnutém klíči nebo rehello se spojení označí k zavření a jeho další zprávy se zahodí.
+//   - Snímek stavu ovladače (snapshot) dostávají jen ovladače; seznam zařízení a karta s QR počítají jen ovladače.
 //
 // Spoléhá na věci z app.js (při jejich změně zkontrolovat tenhle soubor):
 //   globály: state (view, bigTeams, locked, teams, quiz.questions, index), currentQ
@@ -37,21 +46,30 @@
   const DEFAULT_PORT = 8765;
   const HELLO_TIMEOUT_MS = 5000;
   const STATE_DELAY_MS = 50;
+  const RATE_MAX_MESSAGES = 30; // omezovač zpráv jednoho spojení (kontrakt hráčů § 3)
+  const RATE_WINDOW_MS = 1000;
   // Token a basic auth serveru kvízu: hodnota nesmí na mobil ani tehdy, když je pole přepnuté na čitelný text.
   const SECRET_FIELD_IDS = ["tvToken", "tvBasicAuth"];
 
-  /* ---------- Nastavení: token a port (kontrakt § 4) ---------- */
+  /* ---------- Nastavení: token, port a klíč ovladače (kontrakt § 4, kontrakt hráčů § 1) ---------- */
+  // Kratší, delší nebo s cizími znaky by šel klíč snáz uhodnout (nebo by neprošel registrem), proto se nahradí novým.
+  function isValidRemoteKey(key) {
+    return typeof key === "string" && key.length === Link.REMOTE_KEY_LENGTH
+      && Array.from(key).every((ch) => Link.TOKEN_ALPHABET.includes(ch));
+  }
+
   function loadSettings() {
     let saved = {};
     try { saved = JSON.parse(store.get(STORE_KEY)) || {}; } catch { saved = {}; }
     return {
       token: typeof saved.token === "string" && saved.token ? saved.token : Link.newToken(),
       port: Number.isSafeInteger(saved.port) ? saved.port : DEFAULT_PORT,
+      remoteKey: isValidRemoteKey(saved.remoteKey) ? saved.remoteKey : Link.newRemoteKey(),
     };
   }
   const settings = loadSettings();
   const saveSettings = () => store.set(STORE_KEY, JSON.stringify(settings));
-  saveSettings(); // nově vytvořený token se uloží hned
+  saveSettings(); // nově vytvořený token a klíč se uloží hned
 
   /* ---------- Stav serveru a posluchači ---------- */
   let server = { running: false, port: settings.port, addresses: [], error: null };
@@ -85,13 +103,24 @@
   /* ---------- Odesílání ---------- */
   const clients = Link.createClients();
   const helloTimers = {}; // connId -> časovač spojení, které ještě neposlalo hello
+  const limiters = {};    // connId -> omezovač zpráv spojení
+  const closing = new Set(); // spojení, která TV zavírá: jejich další zprávy se zahodí
 
   function send(connId, msg) {
     const data = JSON.stringify(Object.assign({ v: Link.PROTOCOL }, msg));
     return plugin.send({ id: connId, data }).catch((err) => console.warn("tv-link: odeslání selhalo", connId, err && err.code));
   }
-  const closeConn = (connId, reason) => plugin.close({ id: connId, reason }).catch(() => {});
+  function closeConn(connId, reason) {
+    closing.add(connId);
+    return plugin.close({ id: connId, reason }).catch(() => {});
+  }
+  // Chyba a potom zavření; spojení se označí hned, aby se zprávy přijaté mezitím už nezpracovaly.
+  function refuse(connId, code) {
+    closing.add(connId);
+    send(connId, { t: "error", code }).then(() => closeConn(connId, code));
+  }
   const ack = (connId, seq, ok, reason) => send(connId, reason ? { t: "ack", seq, ok, reason } : { t: "ack", seq, ok });
+  const newLimiter = () => Link.createRateLimiter(RATE_MAX_MESSAGES, RATE_WINDOW_MS);
 
   function clearHelloTimer(connId) {
     clearTimeout(helloTimers[connId]);
@@ -154,13 +183,13 @@
     });
   }
 
-  // Jediná cesta rozeslání snímku: jen mobilům po hello, jen když se stav změnil.
+  // Jediná cesta rozeslání snímku: jen ovladačům po hello, jen když se stav změnil. Hráč snímek ovladače nedostane nikdy.
   function sendState() {
     stateTimer = null;
     const next = snapshot();
     if (Link.sameState(next, lastState)) return;
     lastState = next; // i bez připojených mobilů: nový mobil dostane aktuální stav ve welcome
-    const targets = clients.list().filter((c) => c.connected);
+    const targets = clients.list().filter((c) => c.connected && c.role === "remote");
     if (!targets.length) return;
     rev += 1;
     const msg = Object.assign({ t: "state" }, next, { rev });
@@ -271,31 +300,50 @@
     return ack(connId, msg.seq, true);
   }
 
+  // Zprávy hráče (join, buzz) zatím bez hry: TV je odmítne jako vypnuté (směrování doplní faze-3-list-4).
+  function onPlayerMessage(connId, msg) {
+    if (!clients.accept(connId, msg.seq)) return ack(connId, msg.seq, false, "duplicate");
+    return ack(connId, msg.seq, false, "off");
+  }
+
   function onHello(connId, msg) {
     clearHelloTimer(connId);
-    const res = clients.hello(connId, msg);
+    const res = clients.hello(connId, msg, { remoteKey: settings.remoteKey });
     if (!res.ok) {
-      send(connId, { t: "error", code: res.code }).then(() => { if (res.code === "full") closeConn(connId, "full"); });
+      if (res.code === "rehello") closeConn(connId, "rehello");
+      else if (res.code === "forbidden" || res.code === "full") refuse(connId, res.code);
+      else send(connId, { t: "error", code: res.code });
       return;
     }
     if (res.replaced !== undefined) closeConn(res.replaced, "replaced");
     const c = res.client;
-    send(connId, { t: "welcome", clientId: c.clientId, resume: c.resume, role: c.role, state: snapshot(++rev) });
+    // Snímek ovladače jen ovladači; hráč zatím jen fázi „vypnuto“ (plný snímek hráče doplní faze-3-list-4).
+    const state = c.role === "remote" ? snapshot(++rev) : { rev: ++rev, phase: "off" };
+    send(connId, { t: "welcome", clientId: c.clientId, resume: c.resume, role: c.role, state });
     changed();
   }
 
+  // Pořadí kroků je závazné (kontrakt hráčů § 5, Pravidla směrování v onMessage).
   function onMessage(e) {
+    const connId = e.id;
+    if (closing.has(connId)) return;
+    if (!limiters[connId]) limiters[connId] = newLimiter(); // zpráva dřív než událost open
+    if (!limiters[connId].allow(performance.now())) return closeConn(connId, "rate");
     const parsed = Link.parseMessage(e.data);
-    if (!parsed.ok) return send(e.id, { t: "error", code: parsed.code });
+    if (!parsed.ok) return send(connId, { t: "error", code: parsed.code });
     const msg = parsed.msg;
-    if (msg.t === "hello") return onHello(e.id, msg);
-    if (!clients.byConn(e.id)) return send(e.id, { t: "error", code: "hello_required" });
-    if (msg.t === "key") return onKey(e.id, msg);
-    if (msg.t === "text") return onText(e.id, msg);
+    if (msg.t === "hello") return onHello(connId, msg);
+    const client = clients.byConn(connId);
+    if (!client) return send(connId, { t: "error", code: "hello_required" });
+    if (!Link.allowedFor(client.role, msg.t)) return send(connId, { t: "error", code: "forbidden" });
+    if (msg.t === "key") return onKey(connId, msg);
+    if (msg.t === "text") return onText(connId, msg);
+    if (msg.t === "join" || msg.t === "buzz") return onPlayerMessage(connId, msg);
   }
 
   /* ---------- Události pluginu ---------- */
   plugin.addListener("open", (e) => {
+    limiters[e.id] = newLimiter();
     helloTimers[e.id] = setTimeout(() => {
       delete helloTimers[e.id];
       if (!clients.byConn(e.id)) closeConn(e.id, "hello_timeout");
@@ -304,6 +352,8 @@
   plugin.addListener("message", onMessage);
   plugin.addListener("close", (e) => {
     clearHelloTimer(e.id);
+    delete limiters[e.id];
+    closing.delete(e.id);
     if (clients.drop(e.id)) changed();
   });
   plugin.addListener("rtt", (e) => {
@@ -313,24 +363,33 @@
   plugin.addListener("state", applyServer); // obnova po pauze aktivity
 
   /* ---------- Rozhraní pro dialog s QR (faze-4-list-4) ---------- */
-  function info() {
+  // Adresa ovladače v síti; s klíčem jen pro QR kód, bez klíče pro text na plátně.
+  function remoteUrl(remoteKey) {
     const ip = Link.pickAddress(server.addresses);
+    return server.running && ip ? Link.buildUrl(ip, server.port, settings.token, remoteKey) : null;
+  }
+  function info() {
     return {
       running: server.running,
       port: server.port,
       addresses: server.addresses.slice(),
       error: server.error,
       token: settings.token,
-      url: server.running && ip ? Link.buildUrl(ip, server.port, settings.token) : null,
+      url: remoteUrl(settings.remoteKey), // s klíčem ovladače: jen do QR kódu
     };
   }
-  // Seznam mobilů bez tajemství resume.
-  const clientList = () => clients.list().map((c) => ({
+  // Seznam ovladačů bez tajemství resume (hráči se tu nepočítají).
+  const clientList = () => clients.list().filter((c) => c.role === "remote").map((c) => ({
     clientId: c.clientId, name: c.name, connected: c.connected,
     rttMs: c.connected && c.rttMs !== undefined ? c.rttMs : null, // po odpojení se staré měření neukazuje
   }));
+  // „Nový kód“ mění token i klíč ovladače: staré odkazy a QR přestanou platit.
   function restart(options) {
-    if (options && options.newToken) { settings.token = Link.newToken(); saveSettings(); }
+    if (options && options.newToken) {
+      settings.token = Link.newToken();
+      settings.remoteKey = Link.newRemoteKey();
+      saveSettings();
+    }
     return start();
   }
   function onChange(cb) {
@@ -659,7 +718,7 @@
   let cardUrl;
 
   function renderCard() {
-    // Připojený mobil = spárováno: QR s tokenem se z promítané obrazovky schová (viz bezpečnostní kontrola fáze 4).
+    // Připojený ovladač = spárováno: QR s tokenem a klíčem se z promítané obrazovky schová (viz bezpečnostní kontrola fáze 4).
     const paired = clientList().some((c) => c.connected);
     const url = paired ? null : info().url;
     if (url === cardUrl) return;
@@ -672,7 +731,7 @@
     card.querySelector(".tv-link-card-text").textContent = svg
       ? "Naskenuj QR kód fotoaparátem mobilu."
       : "QR kód se nepodařilo zobrazit. Napiš adresu do prohlížeče v mobilu.";
-    card.querySelector(".tv-link-card-url").textContent = url || "";
+    card.querySelector(".tv-link-card-url").textContent = url ? remoteUrl() : ""; // klíč ovladače nikdy textem
     card.hidden = !url;
     card.classList.toggle("no-qr", !svg);
     document.body.classList.toggle("tv-link-card-on", !!url); // místo vpravo pro kartu, ať nepřekrývá zadání ani bubliny

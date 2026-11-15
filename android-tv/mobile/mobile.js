@@ -30,17 +30,21 @@
     lost: { icon: "ph-wifi-slash", text: "Odpojeno, zkouším znovu…" },
     failed: { icon: "ph-wifi-x", text: "Nedaří se spojit" },
     full: { icon: "ph-wifi-x", text: "Televize je plná" },
+    forbidden: { icon: "ph-link-break", text: "Tenhle odkaz už neplatí" },
   };
   const CONN_HINT = {
     failed: "Mobil musí být na stejné Wi-Fi jako televize. Pokud se na televizi změnil kód, naskenuj QR znovu.",
     full: "K televizi je připojeno moc zařízení. Odpoj některé a zkus to znovu.",
+    forbidden: "Naskenuj QR kód znovu: na televizi menu → Ovládání z mobilu.",
   };
   const OVERLAY_TEXT = { menu: "Menu na televizi", dialog: "Okno na televizi", emoji: "Výběr ikony" };
   const VIEW_TEXT = { setup: "Zadání kvízu", loading: "Připravují se otázky…", results: "Výsledky", archive: "Archiv – jen ke čtení" };
   const INPUT_MODES = { url: "url", number: "numeric", email: "email" };
   const ACK_NOTES = { nofield: "Na televizi není vybrané pole", locked: "Archivní kvíz jde jen prohlížet" };
 
-  const token = new URLSearchParams(location.search).get("t");
+  const params = new URLSearchParams(location.search);
+  const token = params.get("t");
+  const remoteKey = params.get("k"); // klíč ovladače z QR kódu: jen do hello, nikam se nevypisuje
   if (!token) {
     el.app.hidden = true;
     el.noToken.hidden = false;
@@ -76,7 +80,7 @@
   // --- stav ---
 
   let socket = null;
-  let connState = "connecting"; // connecting | open | lost | failed | full
+  let connState = "connecting"; // connecting | open | lost | failed | full | forbidden (konečný stav, bez dalších pokusů)
   let welcomed = false;
   let failures = 0;
   let reconnectTimer = null;
@@ -255,7 +259,16 @@
   function sendHello() {
     const hello = { t: "hello", clientId: stored.clientId, role: "remote" };
     if (stored.resume) hello.resume = stored.resume;
+    if (remoteKey) hello.remoteKey = remoteKey;
     send(hello);
+  }
+
+  // Televize odmítla klíč ovladače: odkaz je neplatný a další pokusy by skončily stejně.
+  function stopForbidden() {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    welcomed = false;
+    setConn("forbidden");
   }
 
   function connect() {
@@ -284,7 +297,7 @@
   }
 
   function scheduleReconnect() {
-    if (reconnectTimer) return;
+    if (reconnectTimer || connState === "forbidden") return;
     const delay = RECONNECT_DELAYS[Math.min(failures, RECONNECT_DELAYS.length - 1)];
     failures += 1;
     if (connState !== "full") setConn(failures >= FAILED_AFTER ? "failed" : "lost");
@@ -323,13 +336,14 @@
     } else if (msg.t === "error") {
       if (msg.code === "hello_required") sendHello();
       else if (msg.code === "full") setConn("full");
+      else if (msg.code === "forbidden") stopForbidden();
       else console.warn("Chyba od televize:", msg.code);
     }
   }
 
   // Po návratu na stránku zkus spojení hned, mobil mezitím mohl spojení zahodit.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible") return;
+    if (document.visibilityState !== "visible" || connState === "forbidden") return;
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
     failures = 0;
     connect();

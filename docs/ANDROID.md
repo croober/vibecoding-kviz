@@ -44,7 +44,7 @@ Velikost jde změnit v menu → Ovládání TV → blok **Velikost rozhraní** (
 | ↑ / ↓ při vybraném týmu | +bod / −bod vybranému týmu (místo výběru odpovědí); výběr zruší OK, Zpět nebo stejné číslo |
 | kanál ▲ / ▼ | totéž jako ↑ / ↓ u vybraného týmu (bez výběru ukáže hlášku) |
 | Menu | otevře nabídku |
-| Zpět | zavře dialog / menu / emoji, v kvízu se zeptá na opuštění, na úvodní obrazovce na ukončení aplikace |
+| Zpět | zavře dialog / menu / emoji, při bzučení (pruh „Odpovídá“) tým uvolní bez odpovědi, v kvízu se zeptá na opuštění, na úvodní obrazovce na ukončení aplikace |
 | ↓ z pole s tématem | na tlačítko „Hrát znovu: <poslední téma>“ (OK nabídne nové otázky od AI, nebo stejné v jiném pořadí) a na bubliny |
 | šipky mimo kvíz | přesun fokusu podle polohy prvků; ↓ z pole s tématem na bubliny (OK vloží téma, Zpět vrátí do pole) |
 
@@ -87,7 +87,7 @@ TV aplikace spouští vlastní malý server (nativní plugin `KvizLink`, WebSock
 
 1. Mobil připoj ke **stejné Wi-Fi** (nebo síti) jako televize.
 2. Na úvodní obrazovce (zadání) je vpravo karta **Ovládání z mobilu** s QR kódem. Jinak otevři menu → **Ovládání z mobilu** (u Nastavení serveru je i tlačítko **Psát z mobilu**).
-3. Naskenuj QR fotoaparátem mobilu. Otevře se stránka ovladače. Adresu jde napsat i ručně, dialog ji ukazuje pod QR spolu s kódem.
+3. Naskenuj QR fotoaparátem mobilu. Otevře se stránka ovladače. QR obsahuje klíč ovladače, proto se adresa textem ukáže jen tehdy, když nejde QR vykreslit.
 
 Karta QR na zadání se **skryje, jakmile je připojený mobil** (QR s kódem by jinak zůstal na promítané obrazovce), a po odpojení se vrátí. Bez adresy v síti (televize není na Wi-Fi) karta zmizí a dialog ukáže „Televize není připojená k síti“ a tlačítko **Zkusit znovu**. Dialog ukazuje stav (čeká na připojení / připojeno), seznam připojených mobilů s odezvou (u pomalého spojení varování) a tlačítko **Nový kód**.
 
@@ -101,11 +101,65 @@ Karta QR na zadání se **skryje, jakmile je připojený mobil** (QR s kódem by
 
 ### Síť a adresa
 
-- Server běží na TV na portu **8765** (obsazený port nahradí dalším, až 8774), protokol **http**, jen v lokální síti. Adresa: `http://<IP televize>:<port>/m/?t=<kód>`.
-- **Kód v adrese** (6 znaků) je jediná ochrana: bez správného kódu se WebSocket nenaváže. Vzniká při prvním spuštění (`localStorage` `kviz-tv-link`) a mění se jen tlačítkem **Nový kód**, které odpojí všechny mobily; ty pak musí naskenovat nový QR. Stránka bez kódu v adrese ukáže výzvu ke skenování QR.
+- Server běží na TV na portu **8765** (obsazený port nahradí dalším, až 8774), protokol **http**, jen v lokální síti. Adresa ovladače: `http://<IP televize>:<port>/m/?t=<kód>&k=<klíč>`.
+- **Kód místnosti** (6 znaků) bez správného kódu WebSocket nenaváže, sám ale nedává žádná práva. **Klíč ovladače** (12 znaků, jen v QR) dává právo ovládat televizi, viz Hráči na mobilech a bzučák. Kód vzniká při prvním spuštění (`localStorage` `kviz-tv-link`) a mění se tlačítkem **Nový kód**, které odpojí všechny mobily; ty pak musí naskenovat nový QR. Stránka bez kódu v adrese ukáže výzvu ke skenování QR.
 - Server se při odchodu aplikace do pozadí zastaví a po návratu spustí znovu na stejném portu a s týmž kódem, mobily se připojí samy.
 - Nejvýš 16 současných spojení. Celé ovládání je hotové jen v APK s pluginem; webová verze (`public/`) o něm neví.
-- Ladění: `adb forward tcp:8765 tcp:8765` a v prohlížeči na počítači `http://localhost:8765/m/?t=<kód>` (kód ukáže dialog Ovládání z mobilu). Logika protokolu má testy `npm run test:tv`.
+- Ladění: `adb forward tcp:8765 tcp:8765` a v prohlížeči na počítači `http://localhost:8765/m/?t=<kód>&k=<klíč>` (klíč je jen v QR ovladače; stránku hráče otevře `/m/player.html?t=<kód>`). Logika protokolu má testy `npm run test:tv`.
+
+## Hráči na mobilech a bzučák
+
+Hra s hráči je volitelná a vypnutá. Hráči se připojí svým mobilem (bez instalace), vyberou si přezdívku a tým a na otázku „bzučí“: televize vybere, kdo stiskl první, a ukáže, který tým odpovídá. Odpověď vybírá moderátor ovladačem na TV, mobil hráče nikdy nedostane otázku, odpovědi ani správnou odpověď. Dělá to TV vrstva (`game-core.js`, `tv-game.js`, `tv-lobby.js`, `tv-buzz.js`, stránka `mobile/player.*`), `public/` se nemění.
+
+### Připojení
+
+1. Mobily hráčů připoj ke **stejné Wi-Fi** jako televize.
+2. Menu → **Hráči na mobilech** a zapni **Hra s hráči**. Dialog ukáže QR kód pro hráče; na zadání se navíc objeví karta **Připoj se ke hře** s QR a přezdívkami připojených hráčů (promítá se hráčům, nepřekrývá zadání). Kartu ukazuje jen hra na zadání, QR ovladače se tím skryje.
+3. Hráč QR naskenuje, napíše přezdívku (nejvýš 16 znaků) a vybere tým. Stránka si přezdívku a tým pamatuje, po výpadku se připojí sama.
+4. Připojit se smí **nejvýš 12 hráčů**. Týmy se berou z lišty týmů na TV (nejvýš 4). Dialog ukazuje soupisku podle týmů s odezvou a tlačítkem **Odebrat**.
+5. **Bzučák potřebuje aspoň 2 týmy.** S jedním týmem se hráči připojit smějí, ale bzučák se neodjistí a bod za správnou odpověď se přičítá jako dřív (viz Jeden tým).
+
+Hra se zapíná a vypíná jen v dialogu Hráči na mobilech. Zapnutí hry i přepínač **Bod za správnou odpověď automaticky** (výchozí zapnutý) se pamatují (`localStorage` `kviz-tv-game-v1`).
+
+### Pravidla kola
+
+- **Odjištění:** bzučák se odjistí **1 s** po zobrazení otázky. Dřív je tlačítko na mobilu „Připrav se…“.
+- **Předčasný stisk:** stisk před odjištěním dá hráči trest **1,5 s** (tlačítko „Moc brzy!“).
+- **Kdo byl první:** televize sbírá stisky po prvním stisku **60 ms** a vítěze vybere podle času příjmu na TV (ne podle hodin mobilů). Jeden stisk na hráče; dokud tým odpovídá, další stisky se nepřijímají.
+- **Pruh „Odpovídá“:** nad odpověďmi se ukáže „Odpovídá: <tým> – <přezdívka>“, karta týmu se zvýrazní a zazní zvuk. Moderátor vybere odpověď, kterou tým řekl (ovladačem, nebo z mobilu ovladače A / B / C).
+- **Zpět = bez odpovědi:** tlačítko Zpět při bzučení tým uvolní, tým je do konce otázky zamčený a bzučák se otevře ostatním. Při velkém zobrazení týmů Zpět nejdřív zavře ono.
+- **Druhá šance:** špatná odpověď, když může bzučet jiný tým s připojeným hráčem, otázku **neodhalí**: odpověď se jen označí jako špatná, tým se zamkne a bzučák se otevře ostatním. Zbývá-li jen zamčený tým, otázka se odhalí a kolo skončí. Špatné pokusy se do průběhu kvízu nezapisují.
+- **Automatický bod:** správná odpověď přičte bzučícímu týmu body samy (podle obtížnosti, jako u Jednoho týmu), **právě jednou**. Vypínač je v dialogu Hráči na mobilech. Bez bzučení (nikdo nestiskl, moderátor vybírá sám) se body přičítají ručně jako dřív.
+- **Co bzučák pozastaví:** otevřený dialog, menu nebo výběr emoji a velké zobrazení týmů. Pozastavený bzučák nepřijímá stisky. Už odjištěný je po návratu aktivní hned, bez nové prodlevy; neodjištěný se odjistí 1 s po návratu. Archivní kvíz bzučák nemá vůbec (je jen ke čtení).
+- Odebrání nebo přeřazení týmu na TV vrátí kolo do „Připrav se…“ a může nechat hráče bez týmu; ten si tým vybere znovu. Přejmenování týmu hráče nepřesune.
+
+### Dva QR kódy a klíč ovladače
+
+- **QR pro hráče je veřejný:** dává jen právo hrát (přezdívka, tým, bzučení). Adresa: `http://<IP televize>:<port>/m/player.html?t=<kód>`.
+- **QR ovladače je tajný a hráčům se neukazuje.** Kdo ho naskenuje, ovládá celý kvíz (včetně psaní do polí). Proto je ve hře s hráči karta ovladače na zadání skrytá a dialog Ovládání z mobilu při zapnuté hře varuje „Běží hra s hráči. Tenhle QR kód je jen pro moderátora, neukazuj ho hráčům.“
+- **Klíč ovladače** (12 znaků) je jen uvnitř QR ovladače (`&k=<klíč>`), na TV se nevypisuje textem (výjimka: nejde-li QR vykreslit, ukáže se adresa pro ruční opsání). Ovladač bez platného klíče televize odmítne. Hráči klíč nedostanou nikdy.
+- **Výměna klíče:** při **zapnutí** hry se klíč vymění. Připojené ovladače dostanou nový klíč samy a zůstanou připojené; dialog je před zapnutím vyjmenuje („Zapnout hru s hráči?“, jména nebo „Mobil <n>“), aby šlo poznat cizí zařízení (pak zrušit a dát Nový kód). Tlačítko **Nový kód** vymění kód místnosti i klíč a odpojí všechny ovladače i hráče; hráči musí znovu naskenovat QR pro hráče. Staré záložky a QR ovladače s původním klíčem neplatí.
+- Mobil ovladače klíč po připojení z adresy odstraní (`history.replaceState`). V historii prohlížeče a ve čtečce QR ale původní adresa s klíčem zůstává (z globální historie ji `replaceState` neodstraní). Platí jen do další výměny klíče (zapnutí hry, Nový kód), proto mobil, který ovladač jednou používal, nepůjčuj dál a po akci klíč vyměň.
+
+### Odebrání hráče
+
+Tlačítko **Odebrat** v soupisce hráče odpojí a zapíše do seznamu odebraných (nejvýš 32, nejstarší vypadne). Odebraný mobil se do hry nevrátí **do vypnutí a zapnutí hry s hráči nebo restartu aplikace**; seznam je jen v paměti TV. Důvod odebrání hráč uvidí („Moderátor tě odebral ze hry“). Odebrání je poctivé zdržení, ne zámek: televize pozná zařízení podle `clientId`, který si volí mobil, takže hráč, který smaže data stránky, se přihlásí znovu s novým. Ověřování zařízení je mimo rozsah.
+
+### Síť a bezpečnost
+
+Spojení mobilu s televizí je `ws://` a `http://`, **bez šifrování**, jen v místní síti. Kdo síť odposlouchává, přečte `resume` hráče a může převzít jeho identitu (a u ovladače klíč při připojení). **Hrajte jen na důvěryhodné Wi-Fi**, ne na veřejné nebo hotelové. Další ochrany (klíč ovladače, role, omezení počtu zpráv a 16 spojení) mají omezit zneužití hosty v téže síti, ne odposlech.
+
+### Omezení
+
+- Soupiska je jen v paměti TV. Po restartu aplikace se hráči zapíšou sami, jakmile se jejich mobil znovu připojí (stránka si pamatuje přezdívku a tým); kolo se nepamatuje.
+- Hráč smí **měnit tým jen mimo kvíz nebo po odhalení otázky** (mimo běžící kolo); jinak „Tým jde změnit až po téhle otázce“.
+- Kdo bzučel, se do archivu ani průběhu kvízu nezapisuje.
+- Odpovědi hráčů na mobilu (hráč sám volí A / B / C) zatím nejsou, je to plánovaná další etapa. Odpovídá vždy moderátor.
+- Vyžaduje WebView ≥ Chrome 111: čištění přezdívky (`cleanName` v `game-core.js`) používá `toWellFormed()`, na starším WebView končí každý `join` chybou TypeError a nepřipojí se žádný hráč. Kosmetika: ztlumení přepínače v dialogu používá `:has()` (Chrome 105+), bez něj se přepínač jen nezešedí.
+
+### Protokol hráče
+
+Stejný WebSocket jako ovladač (`/ws?t=<kód>`), verze protokolu `v: 1`, role `player` (ovladač `remote` s klíčem). Hráč smí poslat jen `hello` (role `player`, `clientId`, volitelně `resume`), `join` (`name` 1–16 znaků, `team` 0–3) a `buzz` (`q` index otázky ze snímku). Cokoli jiného televize odmítne (`forbidden`), omezení: 30 zpráv za sekundu na spojení (jinak se spojení zavře s důvodem `rate`). Důvody odmítnutí v `ack`: u `join` `invalid`, `full`, `locked`, `off`; u `buzz` `nojoin`, `closed`, `early`, `locked`, `late`, `off`. Televize hráči posílá jen `welcome`, `ack` (odpověď na `join` a `buzz`), `error` a snímek `state` s poli `rev`, `phase` (`off`, `lobby`, `wait`, `armed`, `answering`, `closed`), `me`, `teams`, `quiz` (jen pořadí otázky), `buzz` (`canBuzz`, `team`, `by`, `mine`, `teamLocked`, `result`). Přezdívky a názvy týmů jsou cizí text a zobrazují se jen jako text. Podrobné rozhraní: hlavičky `game-core.js`, `tv-game.js`, `mobile/player.js`.
 
 ## Kontrolní seznam ručního testu na TV
 
@@ -146,6 +200,20 @@ Karta QR na zadání se **skryje, jakmile je připojený mobil** (QR s kódem by
 - [ ] Mobil: „Nový kód“ (s potvrzením) odpojí mobil; starý QR už nefunguje, nový ano.
 - [ ] Mobil: dialog Ovládání z mobilu ukáže víc připojených mobilů s odezvou; ovládat jde z libovolného.
 - [ ] Mobil: bez Wi-Fi karta QR zmizí a dialog ukáže „Televize není připojená k síti“; po připojení k síti „Zkusit znovu“ QR vrátí.
+- [ ] Hráči: menu → Hráči na mobilech → zapnout Hra s hráči; ukáže se QR pro hráče a na zadání karta „Připoj se ke hře“, která nepřekrývá zadání ani bubliny (čitelná ze 3 m).
+- [ ] Hráči: tři mobily naskenují QR hráče, zadají přezdívku a tým; objeví se v soupisce i na kartě, odezva se obnovuje.
+- [ ] Hráči: dotaz „Zapnout hru s hráči?“ při připojeném ovladači vyjmenuje jména ovladačů; po zapnutí ovladač zůstane připojený a dál funguje.
+- [ ] Hráči: stará záložka (adresa) ovladače s původním klíčem je po zapnutí hry odmítnuta; mobil hráče (adresa `player.html`) televizi neovládá.
+- [ ] Hráči: dialog Ovládání z mobilu při zapnuté hře ukáže upozornění, že QR ovladače je jen pro moderátora; karta ovladače na zadání se neukazuje.
+- [ ] Bzučák: po zobrazení otázky se tlačítka hráčů po 1 s odjistí; stisk dvou mobilů současně vybere jednoho vítěze, pruh „Odpovídá“, zvýrazněná karta týmu a zvuk.
+- [ ] Bzučák: stisk před odjištěním dá trest 1,5 s („Moc brzy!“) a po trestu jde znovu bzučet.
+- [ ] Bzučák: špatná odpověď při druhém týmu otázku neodhalí, označí odpověď a bzučák se otevře ostatním; správná odpověď přičte bod týmu jednou, s vypnutým automatickým bodem ne.
+- [ ] Bzučák: Zpět při bzučení tým uvolní bez odpovědi (zamkne ho); při velkém zobrazení týmů Zpět zavře nejdřív ono.
+- [ ] Bzučák: otevřené menu nebo dialog bzučák pozastaví (tlačítka hráčů nereagují), po zavření se odjistí znovu.
+- [ ] Hráči: zhasnutí a probuzení mobilu hráče ho vrátí do hry bez nového skenování; restart aplikace na TV během hry hráče vrátí do soupisky sám.
+- [ ] Hráči: změna týmů na TV při připojených hráčích (odebrání týmu, jiné pořadí) hráče nenechá v cizím týmu, hráč bez týmu si vybere znovu.
+- [ ] Hráči: Odebrat hráče vyžádá potvrzení a hráč se po pokusu o návrat na stránku do hry nedostane (do vypnutí a zapnutí hry).
+- [ ] Hráči: archivní kvíz bzučák nemá (tlačítka hráčů nejsou aktivní); s jedním týmem je bzučák vypnutý a bod se přičte jako dřív.
 
 ## Ladění
 
@@ -155,6 +223,8 @@ Emulátor: AVD s Android TV rozlišením 1920×1080, hustota 320 dpi, `hw.dPad=y
 
 ## Vazba na `public/app.js`
 
-`android-tv/tv-remote.js`, `tv-keys.js` a `tv-setup.js` spoléhají na globály `state, addPoints, questionPoints, scoringActive, closeMenu, closeEmojiPicker, closeSuggest, confirmDialog, bubbleTimer, swapBubble` a na ID/třídy prvků popsané v hlavičkách souborů. Při změně těchto věcí v `app.js` zkontrolovat TV vrstvu.
+`android-tv/tv-remote.js`, `tv-keys.js`, `tv-setup.js`, `tv-lobby.js` a `tv-buzz.js` spoléhají na globály `state, addPoints, questionPoints, scoringActive, closeMenu, closeEmojiPicker, closeSuggest, confirmDialog, bubbleTimer, swapBubble` a na ID/třídy prvků popsané v hlavičkách souborů. Při změně těchto věcí v `app.js` zkontrolovat TV vrstvu.
 
 `android-tv/tv-link.js` (most mezi pluginem `KvizLink`, mobilní stránkou a ovládáním TV) navíc spoléhá na globály `state` (`view`, `bigTeams`, `locked`, `teams`, `quiz.questions`, `index`), `currentQ`, `closeMenu`, `confirmDialog` a na prvky `#topic`, `#teams`, `#answers` (`.answer`), `#menuPanel`, `#emojiPicker`, `#main`, `#menuBtn`, `dialog[open]`, `body[data-view]`. Z TV vrstvy potřebuje `KvizTv.store` (`tv-server.js`), `KvizTvCore` (`core.js`), `KvizLinkCore` (`link-core.js`), `KvizTvRemote.handleBack` a `isField` (`tv-remote.js`), `#tvSettingsDialog` s `#tvSettingsForm`, `#menuTvKeys`, `#tvReplay` a globál `qrcode` (`vendor/qrcode.js`). Úplný seznam je v hlavičce souboru, při změně těchto věcí ho zkontrolovat.
+
+`android-tv/tv-buzz.js` obaluje `pick` (podruhé, po obalu z `tv-remote.js`: špatná odpověď při bzučení otázku neodhalí) a čte z `app.js` jen `state` (`view`, `index`, `locked`, `bigTeams`, `quiz`, `teams`), `currentQ` (`revealed`, `picked`, `correct`), `addPoints`, `questionPoints`, `scoringActive` a prvky `#answers` (`.answer` v pořadí a, b, c), `#teams` (karty v pořadí týmů), `#menuPanel`, `#emojiPicker`, `dialog[open]` a `body[data-view]`. `tv-game.js` sleduje `#teams`, `#answers` a `body[data-view]`; `tv-lobby.js` potřebuje `state.teams`, `confirmDialog`, `closeMenu`, `#menuBtn` a `#menuPanel`. Při změně těchto věcí v `app.js` zkontrolovat i je. Zpět při bzučení řeší `tv-remote.js` voláním `KvizTvBuzz.onBack`.

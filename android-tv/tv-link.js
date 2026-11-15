@@ -11,9 +11,12 @@
 //   - Každé spojení má omezovač zpráv (RATE_MAX_MESSAGES za RATE_WINDOW_MS, čas z performance.now());
 //     po překročení, odmítnutém klíči nebo rehello se spojení označí k zavření a jeho další zprávy se zahodí.
 //   - Snímek stavu ovladače (snapshot) dostávají jen ovladače; seznam zařízení a karta s QR počítají jen ovladače.
+//   - Rozhraní KvizTvLink.players (pro tv-game.js): identita hráče se bere jen z registru podle spojení, zpráva jde
+//     vždy jednomu hráči (hromadné odeslání hráčům neexistuje) a players.context() skládá podklad snímku
+//     z vyjmenovaných polí – z otázky jen příznak revealed, z týmu jen name, emoji, color (žádné body).
 //
 // Spoléhá na věci z app.js (při jejich změně zkontrolovat tenhle soubor):
-//   globály: state (view, bigTeams, locked, teams, quiz.questions, index), currentQ
+//   globály: state (view, bigTeams, locked, teams[name, emoji, color], quiz.questions, index), currentQ (jen .revealed)
 //   prvky:   #topic (cíl textu na zadání, našeptávač na událost input), #teams a #answers (děti se překreslují),
 //            #answers .answer, #menuPanel, #emojiPicker, dialog[open], body[data-view],
 //            název týmu se ukládá na change, pole v Nastavení serveru (tv-server.js) na input i change,
@@ -105,6 +108,15 @@
   const helloTimers = {}; // connId -> časovač spojení, které ještě neposlalo hello
   const limiters = {};    // connId -> omezovač zpráv spojení
   const closing = new Set(); // spojení, která TV zavírá: jejich další zprávy se zahodí
+  // Nedávno skončená spojení: pozdní zpráva po události close se zahodí a nezaloží neuklizený omezovač.
+  // Pozdní zprávy chodí hned po close, proto stačí omezená paměť (nejstarší se zapomíná).
+  const recentlyClosed = new Set();
+  const RECENTLY_CLOSED_MAX = 64;
+
+  function rememberClosed(connId) {
+    recentlyClosed.add(connId);
+    if (recentlyClosed.size > RECENTLY_CLOSED_MAX) recentlyClosed.delete(recentlyClosed.values().next().value);
+  }
 
   function send(connId, msg) {
     const data = JSON.stringify(Object.assign({ v: Link.PROTOCOL }, msg));
@@ -115,9 +127,12 @@
     return plugin.close({ id: connId, reason }).catch(() => {});
   }
   // Chyba a potom zavření; spojení se označí hned, aby se zprávy přijaté mezitím už nezpracovaly.
+  // Když mezitím přišla událost close (záznam v closing je pryč), nezavírá se znovu – záznam by v closing zůstal.
   function refuse(connId, code) {
     closing.add(connId);
-    send(connId, { t: "error", code }).then(() => closeConn(connId, code));
+    send(connId, { t: "error", code }).then(() => {
+      if (closing.has(connId)) closeConn(connId, code);
+    });
   }
   const ack = (connId, seq, ok, reason) => send(connId, reason ? { t: "ack", seq, ok, reason } : { t: "ack", seq, ok });
   const newLimiter = () => Link.createRateLimiter(RATE_MAX_MESSAGES, RATE_WINDOW_MS);
@@ -300,10 +315,43 @@
     return ack(connId, msg.seq, true);
   }
 
-  // Zprávy hráče (join, buzz) zatím bez hry: TV je odmítne jako vypnuté (směrování doplní faze-3-list-4).
-  function onPlayerMessage(connId, msg) {
+  /* ---------- Hráči: posluchači herní vrstvy (kontrakt hráčů § 5) ---------- */
+  // Po jednom posluchači, žádný seznam: herní vrstva je jen jedna (tv-game.js).
+  let playerMessageCb = null;    // (clientId, msg, rx) -> { ok, reason? }
+  let playerConnectionCb = null; // (clientId, connected)
+  let playerViewFn = null;       // (clientId) -> snímek hráče
+
+  // Výjimka v herní vrstvě nesmí zastavit příjem zpráv; do konzole jen druh chyby, nic ze zprávy.
+  function callSafely(fn, args, what) {
+    try {
+      return { ok: true, value: fn(...args) };
+    } catch (err) {
+      console.warn("tv-link: chyba " + what, err && err.name);
+      return { ok: false };
+    }
+  }
+
+  function notifyConnection(clientId, connected) {
+    if (playerConnectionCb) callSafely(playerConnectionCb, [clientId, connected], "posluchače spojení hráčů");
+  }
+
+  // Snímek pro welcome hráče; bez funkce, při výjimce nebo neplatném výsledku fáze „vypnuto“.
+  function playerWelcomeState(clientId) {
+    const res = playerViewFn ? callSafely(playerViewFn, [clientId], "funkce snímku hráče") : { ok: false };
+    const view = res.ok ? res.value : null;
+    return view && typeof view === "object" ? view : { rev: ++rev, phase: "off" };
+  }
+
+  // join a buzz: clientId jen z registru podle spojení, nikdy ze zprávy; ack z návratové hodnoty posluchače.
+  function onPlayerMessage(connId, msg, rx) {
     if (!clients.accept(connId, msg.seq)) return ack(connId, msg.seq, false, "duplicate");
-    return ack(connId, msg.seq, false, "off");
+    const client = clients.byConn(connId);
+    const res = playerMessageCb ? callSafely(playerMessageCb, [client.clientId, msg, rx], "posluchače zpráv hráčů") : { ok: false };
+    const out = res.ok ? res.value : null;
+    if (!out || typeof out.ok !== "boolean") return ack(connId, msg.seq, false, "off");
+    if (!out.ok) return ack(connId, msg.seq, false, typeof out.reason === "string" ? out.reason : "off");
+    if (msg.t === "join") clients.pin(connId); // zapsaný hráč se při plném registru uvolňuje až po nezapsaných
+    return ack(connId, msg.seq, true);
   }
 
   function onHello(connId, msg) {
@@ -317,16 +365,18 @@
     }
     if (res.replaced !== undefined) closeConn(res.replaced, "replaced");
     const c = res.client;
-    // Snímek ovladače jen ovladači; hráč zatím jen fázi „vypnuto“ (plný snímek hráče doplní faze-3-list-4).
-    const state = c.role === "remote" ? snapshot(++rev) : { rev: ++rev, phase: "off" };
+    // Snímek ovladače jen ovladači; hráč dostane snímek z herní vrstvy (players.setView).
+    const state = c.role === "remote" ? snapshot(++rev) : playerWelcomeState(c.clientId);
     send(connId, { t: "welcome", clientId: c.clientId, resume: c.resume, role: c.role, state });
+    // Nahrazené staré spojení se při svém close už nehlásí (registr ho od spojení odvázal), hlásí se jen připojení.
+    if (c.role === "player") notifyConnection(c.clientId, true);
     changed();
   }
 
   // Pořadí kroků je závazné (kontrakt hráčů § 5, Pravidla směrování v onMessage).
   function onMessage(e) {
     const connId = e.id;
-    if (closing.has(connId)) return;
+    if (closing.has(connId) || recentlyClosed.has(connId)) return;
     if (!limiters[connId]) limiters[connId] = newLimiter(); // zpráva dřív než událost open
     if (!limiters[connId].allow(performance.now())) return closeConn(connId, "rate");
     const parsed = Link.parseMessage(e.data);
@@ -338,7 +388,7 @@
     if (!Link.allowedFor(client.role, msg.t)) return send(connId, { t: "error", code: "forbidden" });
     if (msg.t === "key") return onKey(connId, msg);
     if (msg.t === "text") return onText(connId, msg);
-    if (msg.t === "join" || msg.t === "buzz") return onPlayerMessage(connId, msg);
+    if (msg.t === "join" || msg.t === "buzz") return onPlayerMessage(connId, msg, e.rx);
   }
 
   /* ---------- Události pluginu ---------- */
@@ -354,7 +404,11 @@
     clearHelloTimer(e.id);
     delete limiters[e.id];
     closing.delete(e.id);
-    if (clients.drop(e.id)) changed();
+    rememberClosed(e.id);
+    const dropped = clients.drop(e.id);
+    if (!dropped) return;
+    if (dropped.role === "player") notifyConnection(dropped.clientId, false);
+    changed();
   });
   plugin.addListener("rtt", (e) => {
     const c = clients.byConn(e.id);
@@ -368,6 +422,11 @@
     const ip = Link.pickAddress(server.addresses);
     return server.running && ip ? Link.buildUrl(ip, server.port, settings.token, remoteKey) : null;
   }
+  // Adresa pro hráče: jen kód místnosti, klíč ovladače buildPlayerUrl nepřijímá.
+  function playerUrl() {
+    const ip = Link.pickAddress(server.addresses);
+    return server.running && ip ? Link.buildPlayerUrl(ip, server.port, settings.token) : null;
+  }
   function info() {
     return {
       running: server.running,
@@ -376,6 +435,7 @@
       error: server.error,
       token: settings.token,
       url: remoteUrl(settings.remoteKey), // s klíčem ovladače: jen do QR kódu
+      playerUrl: playerUrl(),
     };
   }
   // Seznam ovladačů bez tajemství resume (hráči se tu nepočítají).
@@ -396,7 +456,72 @@
     if (typeof cb === "function") listeners.push(cb);
   }
 
-  window.KvizTvLink = { info, clients: clientList, restart, onChange };
+  // Hra s hráči: karta ovladače se na zadání neukazuje (klíč se tím nemění).
+  let playerMode = false;
+  function setPlayerMode(on) {
+    playerMode = on === true;
+    renderCard();
+  }
+
+  /* ---------- Rozhraní pro hráče (kontrakt hráčů § 5) ---------- */
+  const VIEWS = ["setup", "loading", "quiz", "results", "archive"];
+  const CONTEXT_TEAMS_MAX = 4;
+  const asText = (v) => (v === undefined || v === null ? "" : String(v));
+  const countOrZero = (n) => (Number.isSafeInteger(n) && n >= 0 ? n : 0);
+
+  // Připojený hráč podle clientId; ovladač, neznámý i odpojený klient = null.
+  function connectedPlayer(clientId) {
+    return clients.list().find((c) => c.clientId === clientId && c.role === "player" && c.connected) || null;
+  }
+
+  // Podklad pro KvizGameCore.viewFor: každé pole se skládá výslovně, nic ze stavu se nepředává celé.
+  function playerContext() {
+    const s = appState();
+    const view = VIEWS.includes(s.view) ? s.view : "setup";
+    const hasQuiz = !!s.quiz && Array.isArray(s.quiz.questions);
+    const q = hasQuiz && typeof currentQ === "function" ? currentQ() : null;
+    return {
+      view,
+      locked: s.locked === true || view === "archive",
+      teams: Array.isArray(s.teams)
+        ? s.teams.slice(0, CONTEXT_TEAMS_MAX).map((t) => ({
+          name: asText(t && t.name), emoji: asText(t && t.emoji), color: asText(t && t.color),
+        }))
+        : [],
+      index: countOrZero(s.index),
+      total: hasQuiz ? s.quiz.questions.length : 0,
+      revealed: !!q && q.revealed === true, // z otázky jen tento příznak
+    };
+  }
+
+  const players = {
+    onMessage(cb) { playerMessageCb = typeof cb === "function" ? cb : null; },
+    onConnection(cb) { playerConnectionCb = typeof cb === "function" ? cb : null; },
+    setView(fn) { playerViewFn = typeof fn === "function" ? fn : null; },
+    // Vždy jednomu hráči přes jeho spojení.
+    send(clientId, msg) {
+      const c = connectedPlayer(clientId);
+      if (!c || !msg || typeof msg !== "object") return false;
+      send(c.connId, msg);
+      return true;
+    },
+    close(clientId, reason) {
+      const c = connectedPlayer(clientId);
+      if (!c) return false;
+      closeConn(c.connId, reason);
+      return true;
+    },
+    // Bez resume a connId; odezva jen u připojeného hráče.
+    list() {
+      return clients.list().filter((c) => c.role === "player").map((c) => ({
+        clientId: c.clientId, connected: c.connected,
+        rttMs: c.connected && c.rttMs !== undefined ? c.rttMs : null,
+      }));
+    },
+    context: playerContext,
+  };
+
+  window.KvizTvLink = { info, clients: clientList, restart, onChange, qrSvg, setPlayerMode, players };
 
   /* ---------- QR kód (globál qrcode z vendor/qrcode.js, balíček qrcode-generator) ---------- */
   const SVG_NS = "http://www.w3.org/2000/svg";
@@ -719,8 +844,9 @@
 
   function renderCard() {
     // Připojený ovladač = spárováno: QR s tokenem a klíčem se z promítané obrazovky schová (viz bezpečnostní kontrola fáze 4).
+    // Ve hře s hráči se karta ovladače neukazuje vůbec (QR pro hráče řeší lobby).
     const paired = clientList().some((c) => c.connected);
-    const url = paired ? null : info().url;
+    const url = paired || playerMode ? null : info().url;
     if (url === cardUrl) return;
     cardUrl = url;
     const box = card.querySelector(".tv-link-card-qr");

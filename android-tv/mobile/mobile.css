@@ -57,13 +57,13 @@ body {
 .status[data-conn="open"] .conn i { color: var(--good); }
 .status[data-conn="lost"], .status[data-conn="failed"] { background: var(--warn-soft); }
 .status[data-conn="lost"] .conn i, .status[data-conn="failed"] .conn i { color: var(--warn); }
-.status[data-conn="full"] { background: var(--bad-soft); }
-.status[data-conn="full"] .conn i { color: var(--bad); }
+.status[data-conn="full"], .status[data-conn="forbidden"] { background: var(--bad-soft); }
+.status[data-conn="full"] .conn i, .status[data-conn="forbidden"] .conn i { color: var(--bad); }
 .ctx {
   display: flex; align-items: center; gap: 6px; min-width: 0;
   color: var(--muted); font-size: .95rem;
 }
-.status[data-conn="lost"] .ctx, .status[data-conn="failed"] .ctx, .status[data-conn="full"] .ctx { color: var(--text); }
+.status[data-conn="lost"] .ctx, .status[data-conn="failed"] .ctx, .status[data-conn="full"] .ctx, .status[data-conn="forbidden"] .ctx { color: var(--text); }
 .ctx span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx i { font-size: 18px; flex: none; }
 .spin { animation: spin 1s linear infinite; }

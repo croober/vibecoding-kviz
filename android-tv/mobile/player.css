@@ -1,0 +1,122 @@
+/* Stránka hráče. Paleta, stavový pruh, hláška a stránka bez tokenu jsou v mobile.css. */
+
+.status[data-conn="kicked"] { background: var(--bad-soft); }
+.status[data-conn="kicked"] .conn i { color: var(--bad); }
+.status[data-conn="kicked"] .ctx { color: var(--text); }
+
+/* Obrazovky */
+.screen { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
+.screen h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 1.5rem; }
+.screen p { margin: 0; line-height: 1.5; }
+#off { align-items: center; text-align: center; padding-top: 48px; }
+.screen-icon { font-size: 64px; color: var(--accent); }
+
+.screen-hint {
+  display: flex; align-items: center; gap: 8px; margin-top: auto;
+  color: var(--text); font-size: .9rem;
+}
+.screen-hint i { font-size: 20px; color: var(--muted); flex: none; }
+
+/* Připojení: přezdívka a tým */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .field .label { font-weight: 600; font-size: .95rem; }
+.nick {
+  width: 100%; height: 56px; padding: 0 14px; border-radius: 14px;
+  border: 2px solid var(--border); background: var(--surface); color: var(--text);
+  font: inherit; font-size: 1.1rem; /* aspoň 16 px, jinak iOS při fokusu zvětší stránku */
+}
+.nick:focus { outline: none; border-color: var(--accent); }
+.nick:disabled { opacity: .55; }
+
+.team-list { display: grid; gap: 8px; }
+.team-pick {
+  --team: var(--border);
+  min-height: 56px; width: 100%; padding: 0 14px; border-radius: 14px; text-align: left;
+  border: 2px solid var(--border); border-left: 10px solid var(--team); background: var(--surface);
+  display: flex; align-items: center; gap: 12px;
+  font-weight: 700; font-size: 1.05rem;
+}
+.team-emoji { font-size: 1.6rem; line-height: 1; flex: none; }
+.team-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-pick[aria-checked="true"] { border-color: var(--accent); border-left-color: var(--team); background: var(--accent-soft); }
+.team-pick[aria-checked="true"]::after { content: "✓"; flex: none; font-size: 1.4rem; font-weight: 800; color: var(--accent); }
+.team-pick:disabled { opacity: .55; cursor: default; }
+.no-teams { padding: 10px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-size: .95rem; }
+
+.join-actions { display: flex; flex-direction: column; gap: 8px; }
+.btn-main {
+  min-height: 56px; padding: 0 18px; border-radius: 14px; border: 0;
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 1.05rem;
+}
+.btn-main:disabled { opacity: .4; cursor: default; }
+.btn-main:not(:disabled):active { filter: brightness(1.1); }
+.btn-ghost {
+  min-height: 48px; min-width: 48px; padding: 0 16px; border-radius: 14px;
+  border: 1px solid var(--border); background: transparent; font-weight: 600;
+}
+.btn-ghost:active { background: var(--accent-soft); border-color: var(--accent); }
+
+/* Hra */
+.game { flex: 1; }
+.me { display: flex; align-items: center; gap: 12px; min-height: 56px; }
+.me-emoji { font-size: 2rem; line-height: 1; flex: none; }
+.me-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.me-team, .me-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-team { font-weight: 700; }
+.me-name { color: var(--muted); font-size: .95rem; }
+
+.buzz-area { display: flex; flex-direction: column; align-items: center; gap: 16px; margin-block: 8px; }
+.buzz-texts { text-align: center; min-height: 4.5em; }
+.buzz-title { font-family: var(--display); font-weight: 800; font-size: 1.5rem; }
+.buzz-sub { margin-top: 4px; color: var(--text); }
+
+/* Bzučák: stisknutelný vypadá jen stav armed (plná plocha, stín, ikona); ostatní jsou čárkované a bez stínu */
+.buzz {
+  width: min(72vw, 320px); aspect-ratio: 1; min-width: 160px; min-height: 160px;
+  border-radius: 50%; padding: 0; display: grid; place-items: center;
+  border: 6px dashed var(--border); background: var(--surface); color: var(--muted);
+  font-size: clamp(56px, 18vw, 96px);
+}
+.buzz:disabled { cursor: default; opacity: 1; }
+.buzz i { opacity: .5; }
+
+.buzz[data-state="lobby"],
+.buzz[data-state="wait"],
+.buzz[data-state="sent"],
+.buzz[data-state="closed"] { border-color: var(--muted); }
+.buzz[data-state="penalty"] { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
+.buzz[data-state="locked"] { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+.buzz[data-state="mine"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.buzz[data-state="mine"] i,
+.buzz[data-state="team"] i { opacity: 1; }
+.buzz[data-state="team"] { border-color: var(--accent); background: var(--surface); color: var(--accent); }
+.buzz[data-state="other"] { border-color: var(--border); background: var(--bg); }
+.buzz[data-state="wait"] i,
+.buzz[data-state="sent"] i { opacity: .8; }
+
+.buzz[data-state="armed"] {
+  border: 6px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+  box-shadow: var(--shadow), 0 0 0 10px var(--accent-soft);
+  cursor: pointer;
+}
+.buzz[data-state="armed"] i { opacity: 1; }
+.buzz[data-state="armed"]:active { transform: scale(.96); filter: brightness(1.1); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .buzz[data-state="armed"] { animation: buzz-pulse 1.2s ease-in-out infinite; }
+}
+@keyframes buzz-pulse {
+  50% { box-shadow: var(--shadow), 0 0 0 20px var(--accent-soft); }
+}
+
+/* Telefon na šířku: bzučák vedle textů */
+@media (orientation: landscape) and (max-height: 500px) {
+  .screen { padding-top: 0; }
+  .game { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 20px; align-content: start; align-items: center; }
+  .game > * { grid-column: 1 / -1; }
+  .game .buzz-area { grid-column: 1 / -1; flex-direction: row; justify-content: center; margin-block: 0; }
+  .buzz { width: clamp(160px, 52dvh, 220px); font-size: 64px; }
+  .buzz-area .buzz-texts { text-align: left; flex: 1; min-width: 0; }
+  .buzz[data-state="armed"] { box-shadow: var(--shadow), 0 0 0 6px var(--accent-soft); }
+  .team-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

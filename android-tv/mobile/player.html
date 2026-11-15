@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#f3f1ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121713" media="(prefers-color-scheme: dark)">
+  <title>Kvíz – hráč</title>
+  <link rel="stylesheet" href="/vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="/vendor/phosphor/style.css">
+  <link rel="stylesheet" href="mobile.css">
+  <link rel="stylesheet" href="player.css">
+</head>
+<body>
+  <h1 class="sr-only">Kvíz – hráč</h1>
+
+  <div class="app" id="app" data-screen="join">
+    <header class="status" id="status" data-conn="connecting">
+      <span class="conn" role="status" aria-live="polite">
+        <i class="ph ph-circle-notch spin" id="conn-icon" aria-hidden="true"></i>
+        <span id="conn-text">Připojuji k televizi…</span>
+      </span>
+      <span class="ctx">
+        <span id="ctx-text"></span>
+      </span>
+    </header>
+    <p class="conn-hint" id="conn-hint" hidden></p>
+
+    <section class="screen" id="off" aria-labelledby="off-title" hidden>
+      <i class="ph ph-hourglass-medium screen-icon" aria-hidden="true"></i>
+      <h2 id="off-title">Hra s hráči není zapnutá</h2>
+      <p>Počkej, až ji moderátor na televizi zapne.</p>
+    </section>
+
+    <form class="screen join" id="join" autocomplete="off" aria-labelledby="join-title">
+      <h2 id="join-title">Připoj se ke hře</h2>
+      <div class="field">
+        <label for="nick">Tvoje přezdívka</label>
+        <input type="text" id="nick" class="nick" maxlength="16" autocomplete="off" enterkeyhint="done" placeholder="např. Pepa" disabled>
+      </div>
+      <div class="field">
+        <span class="label" id="team-label">Vyber tým</span>
+        <div class="team-list" id="team-list" role="radiogroup" aria-label="Vyber tým"></div>
+        <p class="no-teams" id="no-teams" hidden>Na televizi zatím nejsou žádné týmy. Počkej, až je moderátor přidá.</p>
+      </div>
+      <div class="join-actions">
+        <button type="submit" class="btn-main" id="join-btn" disabled>Připojit se</button>
+        <button type="button" class="btn-ghost" id="join-cancel" hidden>Zpět</button>
+      </div>
+    </form>
+
+    <section class="screen game" id="game" aria-label="Hra" hidden>
+      <div class="me">
+        <span class="me-emoji" id="me-emoji" aria-hidden="true"></span>
+        <span class="me-text">
+          <span class="me-team" id="me-team"></span>
+          <span class="me-name" id="me-name"></span>
+        </span>
+        <button type="button" class="btn-ghost" id="change">Změnit tým</button>
+      </div>
+
+      <div class="buzz-area">
+        <button type="button" class="buzz" id="buzz" data-state="lobby" aria-labelledby="buzz-title" disabled>
+          <i class="ph ph-hand-tap" aria-hidden="true"></i>
+        </button>
+        <div class="buzz-texts" role="status" aria-live="polite">
+          <p class="buzz-title" id="buzz-title">Čekej na otázku</p>
+          <p class="buzz-sub" id="buzz-sub">Kvíz ještě neběží.</p>
+        </div>
+      </div>
+
+      <p class="screen-hint">
+        <i class="ph ph-device-mobile" aria-hidden="true"></i>
+        <span>Nech displej zapnutý, ať nepřijdeš o otázku.</span>
+      </p>
+    </section>
+  </div>
+
+  <p class="note" id="note" role="status" aria-live="polite">
+    <i class="ph ph-warning-circle" aria-hidden="true"></i>
+    <span id="note-text"></span>
+  </p>
+
+  <section class="no-token" id="no-token" hidden>
+    <i class="ph ph-qr-code" aria-hidden="true"></i>
+    <h2>Naskenuj QR kód na televizi</h2>
+    <p>Najdeš ho na televizi v menu → Hráči na mobilech.</p>
+  </section>
+
+  <script src="player.js"></script>
+</body>
+</html>

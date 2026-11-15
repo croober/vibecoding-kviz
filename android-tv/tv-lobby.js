@@ -23,6 +23,7 @@
   const SLOW_RTT_MS = 300;
   const REFRESH_MS = 2000; // odezvy hráčů nevolají onChange, otevřený dialog se obnovuje sám
   const NO_TEAM = "none";
+  const CARD_MAX_NAMES = 12; // přezdívek na kartě, zbytek „a další {n}“
 
   /* ---------- Dialog ---------- */
   const dlg = document.createElement("dialog");
@@ -174,8 +175,7 @@
     return Number.isInteger(p.team) && p.team >= 0 && p.team < teams.length ? p.team : NO_TEAM;
   }
 
-  function renderPlayers() {
-    const list = Game.players();
+  function renderPlayers(list) {
     const focused = document.activeElement;
     const focusedId = [...rows].find(([, r]) => r.btn === focused);
     const teamCount = (appState().teams || []).length;
@@ -220,9 +220,7 @@
   }
 
   /* ---------- Obnova otevřeného dialogu ---------- */
-  function renderDialog() {
-    const s = Game.settings();
-    const url = Game.playerUrl();
+  function renderDialog(s, url, list) {
     if (enabledBox.checked !== s.enabled) enabledBox.checked = s.enabled;
     if (autoBox.checked !== s.autoPoints) autoBox.checked = s.autoPoints;
     autoBox.disabled = !s.enabled;
@@ -232,19 +230,92 @@
       renderQrBox(s.enabled, url);
       qrKey = key;
     }
-    const list = s.enabled ? Game.players() : [];
     renderStatus(s.enabled, list.filter((p) => p.connected).length);
-    renderPlayers();
+    renderPlayers(list);
+  }
+
+  /* ---------- Karta na zadání: QR a kdo je v kterém týmu (jen k zobrazení, bez fokusu) ---------- */
+  // Vložená jako první dítě <main>, ukazuje se jen v pohledu setup (CSS). Karta ovladače se při hře s hráči skrývá (tv-link.js).
+  const card = document.createElement("aside");
+  card.className = "tv-game-card";
+  card.id = "tvGameCard";
+  card.setAttribute("aria-label", "Připoj se ke hře");
+  card.hidden = true;
+  card.innerHTML = `
+    <div class="tv-game-card-box">
+      <div class="tv-game-card-qr"></div>
+      <b class="tv-game-card-title">Připoj se ke hře</b>
+      <p class="tv-game-card-text">Naskenuj QR kód mobilem a vyber si tým.</p>
+      <ul class="tv-game-card-teams"></ul>
+    </div>`;
+  const cardQr = card.querySelector(".tv-game-card-qr");
+  const cardTeams = card.querySelector(".tv-game-card-teams");
+  const main = $("main");
+  if (main) main.prepend(card);
+  let cardUrl = null; // adresa, pro kterou je vykreslené QR karty
+
+  function renderCardQr(url) {
+    if (url === cardUrl) return;
+    cardUrl = url;
+    cardQr.textContent = "";
+    const svg = url ? Link.qrSvg(url, QR_LABEL) : null;
+    if (svg) cardQr.appendChild(svg);
+  }
+
+  // Přezdívky po týmech, nejvýš CARD_MAX_NAMES; zbytek jen počtem. Odpojený hráč zeslabeně a s textem.
+  function renderCardTeams(list) {
+    cardTeams.textContent = "";
+    let left = CARD_MAX_NAMES;
+    for (const key of [...(appState().teams || []).keys(), NO_TEAM]) {
+      const inGroup = list.filter((p) => teamKey(p) === key);
+      if (!inGroup.length || !left) continue;
+      const head = document.createElement("li");
+      head.className = "tv-game-card-team";
+      head.textContent = groupLabel(key);
+      cardTeams.appendChild(head);
+      for (const p of inGroup.slice(0, left)) {
+        const li = document.createElement("li");
+        li.className = "tv-game-card-player" + (p.connected ? "" : " off");
+        li.textContent = p.connected ? p.name : `${p.name} (odpojeno)`;
+        cardTeams.appendChild(li);
+      }
+      left -= Math.min(left, inGroup.length);
+    }
+    const rest = list.length - (CARD_MAX_NAMES - left);
+    if (rest > 0) {
+      const more = document.createElement("li");
+      more.className = "tv-game-card-more";
+      more.textContent = `a další ${rest}`;
+      cardTeams.appendChild(more);
+    }
+    cardTeams.hidden = !cardTeams.children.length;
+  }
+
+  function renderCard(s, url, list) {
+    renderCardQr(s.enabled ? url : null);
+    const visible = !!cardUrl && cardQr.firstChild !== null;
+    card.hidden = !visible;
+    document.body.classList.toggle("tv-game-card-on", visible); // místo vpravo, ať karta nepřekrývá zadání ani bubliny
+    if (visible) renderCardTeams(list);
+  }
+
+  /* ---------- Jedna obnova: nastavení a soupiska se čtou jednou pro kartu i dialog ---------- */
+  function refresh() {
+    const s = Game.settings();
+    const url = Game.playerUrl();
+    const list = s.enabled ? Game.players() : [];
+    renderCard(s, url, list);
+    if (dlg.open) renderDialog(s, url, list);
   }
 
   function openDialog(from) {
     opener = from || document.activeElement;
     qrKey = null; // při otevření vždy překreslit celé
-    renderDialog();
+    refresh();
     if (!dlg.open) dlg.showModal();
     part("tvGameDone").focus();
     clearInterval(timer);
-    timer = setInterval(() => { if (dlg.open) renderDialog(); }, REFRESH_MS);
+    timer = setInterval(() => { if (dlg.open) refresh(); }, REFRESH_MS);
   }
 
   dlg.addEventListener("close", () => {
@@ -257,8 +328,9 @@
   part("tvGameClose").addEventListener("click", () => dlg.close("cancel"));
   part("tvGameDone").addEventListener("click", () => dlg.close("ok"));
 
-  Game.onChange(() => { if (dlg.open) renderDialog(); });
-  Link.onChange(() => { if (dlg.open) renderDialog(); });
+  Game.onChange(refresh);
+  Link.onChange(refresh);
+  refresh(); // karta po startu aplikace (hra mohla zůstat zapnutá)
 
   /* ---------- Přepínače a odebrání hráče ---------- */
   const ask = (opts) => (typeof confirmDialog === "function" ? confirmDialog(opts) : Promise.resolve(true));
@@ -278,7 +350,7 @@
     }).then((ok) => {
       if (ok) Game.setEnabled(true);
       if (dlg.open) {
-        renderDialog();
+        refresh();
         enabledBox.focus();
       }
     });
@@ -295,7 +367,7 @@
     }).then((ok) => {
       if (ok) Game.kick(clientId);
       if (!dlg.open) return;
-      renderDialog();
+      refresh();
       const row = rows.get(clientId);
       (row && row.btn.isConnected ? row.btn : part("tvGameDone")).focus();
     });

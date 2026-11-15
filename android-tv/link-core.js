@@ -308,6 +308,14 @@
         unbind(client);
         return client;
       },
+      // Zapomene klienta úplně (připojený i odpojený): uvolní vazbu na spojení a odstraní záznam. Spojení nezavírá.
+      forget: function (clientId) {
+        var client = find(clientId);
+        if (!client) return null;
+        unbind(client);
+        clients.splice(clients.indexOf(client), 1);
+        return client;
+      },
       list: function () { return clients.slice(); },
       // Zpráva se provede jen se `seq` větším než poslední přijaté; jinak (i bez hello) false.
       accept: function (connId, seq) {
@@ -385,6 +393,19 @@
     return view;
   }
 
+  // Jediné klíče, které smí nést snímek hráče (kontrakt § 7). Pojistka navíc: tvar hodnot určuje herní vrstva.
+  var PLAYER_STATE_KEYS = ["rev", "phase", "me", "teams", "quiz", "buzz"];
+
+  // Nový objekt jen s povolenými klíči, které vstup má; vstup, který není prostý objekt, → null.
+  function playerStateView(view) {
+    if (!isPlainObject(view)) return null;
+    var out = {};
+    PLAYER_STATE_KEYS.forEach(function (key) {
+      if (Object.prototype.hasOwnProperty.call(view, key)) out[key] = view[key];
+    });
+    return out;
+  }
+
   function sameValue(a, b) {
     if (a === b) return true;
     if (!isPlainObject(a) || !isPlainObject(b)) return false;
@@ -406,6 +427,7 @@
   root.KvizLinkCore = {
     PROTOCOL: PROTOCOL, LIMITS: LIMITS, ROLES: ROLES, REMOTE_KEY_LENGTH: REMOTE_KEY_LENGTH, TOKEN_ALPHABET: TOKEN_ALPHABET, REMOTE_ACTIONS: REMOTE_ACTIONS,
     parseMessage: parseMessage, commandOf: commandOf, newToken: newToken, newRemoteKey: newRemoteKey, buildUrl: buildUrl, buildPlayerUrl: buildPlayerUrl, pickAddress: pickAddress,
-    allowedFor: allowedFor, createClients: createClients, createRateLimiter: createRateLimiter, fieldView: fieldView, stateView: stateView, sameState: sameState
+    allowedFor: allowedFor, createClients: createClients, createRateLimiter: createRateLimiter, fieldView: fieldView, stateView: stateView, sameState: sameState,
+    PLAYER_STATE_KEYS: PLAYER_STATE_KEYS, playerStateView: playerStateView
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import "./core.js";
 import "./link-core.js";
 
-const { PROTOCOL, LIMITS, REMOTE_KEY_LENGTH, allowedFor, newRemoteKey, buildPlayerUrl, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, createRateLimiter, fieldView, stateView, sameState } = globalThis.KvizLinkCore;
+const { PROTOCOL, LIMITS, REMOTE_KEY_LENGTH, allowedFor, newRemoteKey, buildPlayerUrl, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, createRateLimiter, fieldView, stateView, sameState, PLAYER_STATE_KEYS, playerStateView } = globalThis.KvizLinkCore;
 
 const parse = (obj) => parseMessage(JSON.stringify({ v: PROTOCOL, ...obj }));
 const BAD = { ok: false, code: "bad_message" };
@@ -724,6 +724,51 @@ test("sameState: ignoruje rev, pozná změnu v hloubce", () => {
   assert.equal(sameState(a, stateView("remote", noQuiz)), false);
   assert.equal(sameState(stateView("remote", noQuiz), stateView("remote", { ...noQuiz, rev: 1 })), true);
   assert.equal(sameState(null, a), false);
+});
+
+test("playerStateView: propustí jen povolené klíče a vrátí nový objekt", () => {
+  const input = {
+    rev: 2, phase: "open", me: { name: "Eva" }, teams: [], quiz: { index: 1 }, buzz: null,
+    correct: "a", answers: ["x"], remoteKey: "k2m4p6r8t9wx", t: "state"
+  };
+  const out = playerStateView(input);
+  assert.notEqual(out, input);
+  assert.deepEqual(Object.keys(out), PLAYER_STATE_KEYS);
+  assert.ok(!JSON.stringify(out).includes("k2m4p6r8t9wx"));
+  assert.ok("correct" in input && "remoteKey" in input);
+});
+
+test("playerStateView: chybějící klíče se nedoplňují, neplatný vstup vrací null", () => {
+  assert.deepEqual(playerStateView({ phase: "off" }), { phase: "off" });
+  assert.deepEqual(playerStateView({}), {});
+  assert.equal(playerStateView(null), null);
+  assert.equal(playerStateView([]), null);
+  assert.equal(playerStateView("state"), null);
+});
+
+test("clients.forget: odpojený i připojený klient zmizí a stejné clientId se zakládá znovu", () => {
+  const clients = createClients({});
+  const gone = clients.hello(1, player({ clientId: playerId(1) }), AUTH).client;
+  const other = clients.hello(2, player({ clientId: playerId(2) }), AUTH).client;
+  clients.drop(1);
+  assert.equal(clients.forget(playerId(1)), gone);
+  assert.deepEqual(ids(clients), [playerId(2)]);
+
+  assert.equal(clients.forget(playerId(2)), other);
+  assert.deepEqual(ids(clients), []);
+  assert.equal(clients.byConn(2), null);
+
+  const again = clients.hello(3, player({ clientId: playerId(1), resume: gone.resume }), AUTH);
+  assert.equal(again.ok, true);
+  assert.equal(again.created, true);
+  assert.notEqual(again.client, gone);
+});
+
+test("clients.forget: neznámé clientId vrací null a registr nechá beze změny", () => {
+  const clients = createClients({});
+  clients.hello(1, player({ clientId: playerId(1) }), AUTH);
+  assert.equal(clients.forget(playerId(9)), null);
+  assert.deepEqual(ids(clients), [playerId(1)]);
 });
 
 test("createRateLimiter: 30 volání projde, 31. v čase 30 ne", () => {

@@ -19,6 +19,8 @@
 //   - Rozhraní KvizTvLink.players (pro tv-game.js): identita hráče se bere jen z registru podle spojení, zpráva jde
 //     vždy jednomu hráči (hromadné odeslání hráčům neexistuje) a players.context() skládá podklad snímku
 //     z vyjmenovaných polí – z otázky jen příznak revealed, z týmu jen name, emoji, color (žádné body).
+//     Hráči jde jen zpráva state a jen s klíči z KvizLinkCore.PLAYER_STATE_KEYS (totéž platí pro snímek ve welcome);
+//     players.forget(clientId) hráče zapomene (připojenému zavře spojení, ovladač se nikdy neodstraní).
 //
 // Spoléhá na věci z app.js (při jejich změně zkontrolovat tenhle soubor):
 //   globály: state (view, bigTeams, locked, teams[name, emoji, color], quiz.questions, index), currentQ (jen .revealed)
@@ -343,8 +345,8 @@
   // Snímek pro welcome hráče; bez funkce, při výjimce nebo neplatném výsledku fáze „vypnuto“.
   function playerWelcomeState(clientId) {
     const res = playerViewFn ? callSafely(playerViewFn, [clientId], "funkce snímku hráče") : { ok: false };
-    const view = res.ok ? res.value : null;
-    return view && typeof view === "object" && !Array.isArray(view) ? view : { rev: ++rev, phase: "off" };
+    const view = res.ok ? Link.playerStateView(res.value) : null;
+    return view || { rev: ++rev, phase: "off" };
   }
 
   // join a buzz: clientId jen z registru podle spojení, nikdy ze zprávy; ack z návratové hodnoty posluchače.
@@ -512,11 +514,22 @@
     onMessage(cb) { playerMessageCb = typeof cb === "function" ? cb : null; },
     onConnection(cb) { playerConnectionCb = typeof cb === "function" ? cb : null; },
     setView(fn) { playerViewFn = typeof fn === "function" ? fn : null; },
-    // Vždy jednomu hráči přes jeho spojení.
+    // Vždy jednomu hráči přes jeho spojení; jde jen snímek `state` a jen s povolenými klíči (nový objekt).
     send(clientId, msg) {
       const c = connectedPlayer(clientId);
-      if (!c || !msg || typeof msg !== "object") return false;
-      send(c.connId, msg);
+      if (!c || !msg || msg.t !== "state") return false;
+      const view = Link.playerStateView(msg);
+      if (!view) return false;
+      send(c.connId, Object.assign({ t: "state" }, view));
+      return true;
+    },
+    // Hráče úplně zapomene (jen role player, ovladač nikdy); připojenému nejdřív zavře spojení.
+    forget(clientId) {
+      const c = clients.list().find((x) => x.clientId === clientId && x.role === "player");
+      if (!c) return false;
+      if (c.connected) closeConn(c.connId, "kicked");
+      clients.forget(clientId);
+      changed();
       return true;
     },
     close(clientId, reason) {

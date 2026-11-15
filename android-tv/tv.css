@@ -146,7 +146,12 @@ body.tv.teams-big .team-actions { padding-top: 4px; }
 
 #tvLinkDialog .tv-link-steps { margin: 0; padding-left: 1.4em; font-size: 1.2rem; line-height: 1.5; }
 #tvLinkDialog .tv-link-noqr { margin: 0 0 6px; font-size: 1.2rem; font-weight: 600; }
-#tvLinkDialog .tv-link-alt { margin: 18px 0 6px; font-size: 1.05rem; }
+#tvLinkDialog .tv-link-warn {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 20px; padding: 12px 16px; text-align: left;
+  border: 2px solid var(--warn); border-radius: 14px; font-size: 1.2rem; line-height: 1.5; font-weight: 700;
+}
+#tvLinkDialog .tv-link-warn[hidden] { display: none; }
+#tvLinkDialog .tv-link-warn i { flex: none; font-size: 2rem; color: var(--warn); }
 #tvLinkDialog .tv-link-url {
   display: block; padding: 12px 16px; border-radius: 14px; background: var(--bg); color: var(--text);
   font-family: ui-monospace, Consolas, monospace; font-size: 1.5rem; font-weight: 700; line-height: 1.35;
@@ -199,12 +204,6 @@ body.tv .tv-link-card-box {
 body.tv .tv-link-card-qr { aspect-ratio: 1; line-height: 0; border-radius: 8px; overflow: hidden; background: #fff; }
 body.tv .tv-link-card-title { display: block; margin-top: 10px; font-size: 1.05rem; font-weight: 700; }
 body.tv .tv-link-card-text { margin: 2px 0 0; font-size: .9rem; line-height: 1.35; }
-body.tv .tv-link-card-url {
-  display: block; margin-top: 6px; font-family: ui-monospace, Consolas, monospace; font-size: .8rem; line-height: 1.35; overflow-wrap: anywhere;
-}
-/* bez knihovny QR: jen nadpis, věta a adresa větším písmem */
-body.tv .tv-link-card.no-qr .tv-link-card-title { margin-top: 0; }
-body.tv .tv-link-card.no-qr .tv-link-card-url { font-size: 1rem; font-weight: 700; }
 /* místo vpravo jen na zadání a jen když je karta vidět */
 body.tv.tv-link-card-on[data-view="setup"] main { padding-right: calc(24px + var(--tv-qr-reserve)); }
 body.tv.tv-link-card-on[data-view="setup"] .bubbles { right: var(--tv-qr-reserve); }

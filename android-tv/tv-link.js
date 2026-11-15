@@ -477,6 +477,7 @@
   function setPlayerMode(on) {
     playerMode = on === true;
     renderCard();
+    if (dlg.open) renderDialog();
   }
 
   /* ---------- Rozhraní pro hráče (kontrakt hráčů § 5) ---------- */
@@ -620,6 +621,7 @@
       <h3 id="tvLinkTitle">Ovládání z mobilu</h3>
       <button type="button" class="icon-btn" id="tvLinkClose" aria-label="Zavřít" title="Zavřít"><i class="ph ph-x" aria-hidden="true"></i></button>
     </div>
+    <p class="tv-link-warn" id="tvLinkWarn" role="note" hidden><i class="ph ph-warning" aria-hidden="true"></i><span>Běží hra s hráči. Tenhle QR kód je jen pro moderátora, neukazuj ho hráčům.</span></p>
     <div class="tv-link-body">
       <div class="tv-link-qr" id="tvLinkQr"></div>
       <div class="tv-link-info">
@@ -756,6 +758,7 @@
   function renderDialog() {
     const i = info();
     const kind = linkKind(i);
+    part("tvLinkWarn").hidden = !playerMode;
     if (i.url !== dlgUrl || kind !== dlgKind) {
       renderQrBox(i, kind);
       dlgUrl = i.url;
@@ -867,7 +870,6 @@
       <div class="tv-link-card-qr"></div>
       <b class="tv-link-card-title">Ovládání z mobilu</b>
       <p class="tv-link-card-text">Naskenuj QR kód fotoaparátem mobilu.</p>
-      <code class="tv-link-card-url" hidden></code>
     </div>`;
   const main = $("main");
   if (main) main.prepend(card);

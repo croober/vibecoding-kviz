@@ -49,7 +49,7 @@
   const CONN_HINT = {
     failed: "Mobil musí být na stejné Wi-Fi jako televize. Pokud se na televizi změnil kód, naskenuj QR znovu.",
     full: "Ke hře je připojeno moc hráčů. Zkus to za chvíli.",
-    kicked: "Chceš-li hrát dál, naskenuj QR kód na televizi znovu.",
+    kicked: "Zpátky tě může pustit jen moderátor.",
   };
   const JOIN_NOTES = {
     invalid: "Zadej přezdívku a vyber tým",

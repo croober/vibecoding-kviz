@@ -25,6 +25,7 @@
   const SEND_DELAY_MS = 50;
   const DEFAULT_SETTINGS = { enabled: false, autoPoints: true };
   const OFF = { ok: false, reason: "off" };
+  const MAX_KICKED = 32; // strop seznamu odebraných; při překročení vypadne nejstarší
 
   const store = Tv.store;
   const link = TvLink.players;
@@ -32,6 +33,7 @@
   const hooks = { onBuzz: null };
   const listeners = [];
   const lastSent = new Map(); // clientId → poslední odeslaný snímek
+  const kicked = []; // odebraná clientId (jen v paměti), od nejstaršího
   let rev = 0;
   let sendTimer = null;
 
@@ -58,16 +60,31 @@
   }
 
   /* ---------- Snímky hráčům ---------- */
+  // Odebraný hráč dostane snímek vypnuté hry, takže nenese týmy ani stav hry.
   function viewOf(clientId, withRev) {
-    return game.viewFor(clientId, Object.assign({}, link.context(), { enabled: settingsNow.enabled, rev: withRev }));
+    const enabled = settingsNow.enabled && !kicked.includes(clientId);
+    return game.viewFor(clientId, Object.assign({}, link.context(), { enabled, rev: withRev }));
   }
 
-  // Snímek do welcome: rev roste jen s odeslaným snímkem.
+  // Snímek do welcome: rev roste jen s odeslaným snímkem. Při chybě jde hráči prázdný snímek s vlastním rev.
   function welcomeView(clientId) {
     rev += 1;
-    const view = viewOf(clientId, rev);
-    lastSent.set(clientId, view);
-    return view;
+    try {
+      const view = viewOf(clientId, rev);
+      lastSent.set(clientId, view);
+      return view;
+    } catch (err) {
+      console.warn("tv-game: chyba při sestavení snímku welcome", err);
+      return { rev, phase: "off" };
+    }
+  }
+
+  function sendView(player) {
+    const next = viewOf(player.clientId, rev + 1);
+    if (Link.sameState(next, lastSent.get(player.clientId))) return;
+    rev += 1;
+    lastSent.set(player.clientId, next);
+    link.send(player.clientId, Object.assign({ t: "state" }, next));
   }
 
   function sendViews() {
@@ -75,13 +92,7 @@
     const list = link.list();
     const known = new Set(list.map((p) => p.clientId));
     Array.from(lastSent.keys()).forEach((id) => { if (!known.has(id)) lastSent.delete(id); });
-    list.filter((p) => p.connected).forEach((p) => {
-      const next = viewOf(p.clientId, rev + 1);
-      if (Link.sameState(next, lastSent.get(p.clientId))) return;
-      rev += 1;
-      lastSent.set(p.clientId, next);
-      link.send(p.clientId, Object.assign({ t: "state" }, next));
-    });
+    list.filter((p) => p.connected).forEach((p) => callSafely(sendView, [p], "při odeslání snímku hráči"));
   }
   function refresh() {
     if (!sendTimer) sendTimer = setTimeout(sendViews, SEND_DELAY_MS);
@@ -90,7 +101,7 @@
   /* ---------- Zprávy a spojení hráčů ---------- */
   function onJoin(clientId, msg) {
     const res = game.join(clientId, msg.name, msg.team, link.context().teams);
-    notify();
+    if (res.ok) notify();
     return res;
   }
   function onBuzz(clientId, msg, rx) {
@@ -100,6 +111,7 @@
   }
 
   link.onMessage((clientId, msg, rx) => {
+    if (kicked.includes(clientId)) return OFF;
     if (!settingsNow.enabled) return OFF;
     let res = OFF;
     if (msg.t === "join") res = onJoin(clientId, msg);
@@ -109,6 +121,10 @@
   });
 
   link.onConnection((clientId, connected) => {
+    if (connected === true && kicked.includes(clientId)) {
+      link.forget(clientId);
+      return;
+    }
     game.setConnected(clientId, connected === true);
     refresh();
     notify();
@@ -138,7 +154,10 @@
     const next = on === true;
     if (next === settingsNow.enabled) return;
     settingsNow.enabled = next;
-    if (next) TvLink.rotateRemoteKey();
+    if (next) {
+      kicked.length = 0;
+      TvLink.rotateRemoteKey();
+    }
     TvLink.setPlayerMode(next);
     saveSettings();
     refresh();
@@ -154,6 +173,16 @@
     const rtt = new Map(link.list().map((p) => [p.clientId, p.rttMs]));
     return game.players().map((p) => Object.assign({}, p, { rttMs: rtt.has(p.clientId) ? rtt.get(p.clientId) : null }));
   }
+  // Trvalé odebrání hráče do vypnutí a zapnutí hry. game.remove jde před forget, aby se zavřením spojení nic nevrátilo.
+  function kick(clientId) {
+    if (!game.remove(clientId)) return false;
+    if (!kicked.includes(clientId)) kicked.push(clientId);
+    if (kicked.length > MAX_KICKED) kicked.shift();
+    link.forget(clientId);
+    refresh();
+    notify();
+    return true;
+  }
   function playerUrl() {
     return TvLink.info().playerUrl;
   }
@@ -163,7 +192,7 @@
 
   window.KvizTvGame = {
     settings: () => Object.assign({}, settingsNow),
-    setEnabled, setAutoPoints, players, playerUrl, onChange, game, refresh, hooks,
+    setEnabled, setAutoPoints, players, kick, playerUrl, onChange, game, refresh, hooks,
   };
 
   // Start aplikace: uložená zapnutá hra jen skryje kartu ovladače, klíč ovladače zůstává (R29).

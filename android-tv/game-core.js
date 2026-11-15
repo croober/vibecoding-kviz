@@ -2,7 +2,7 @@
 // Vystaví se vždy jako root.KvizGameCore. Čas dostává od volajícího jako parametr; na jiných modulech nezávisí.
 // Rozhraní: LIMITS, TIMING, cleanName(raw) → řetězec | null a createGame({ maxPlayers }) se soupiskou hráčů
 // (join, remove, setConnected, players, remapTeams) a kolem bzučáku (openRound, arm, setPaused, buzz, resolve,
-// release, closeRound, round). Tým se předává jako reference { name, emoji, color }.
+// release, closeRound, round) a snímkem pro mobil hráče viewFor(clientId, ctx). Tým se předává jako reference { name, emoji, color }.
 (function (root) {
   "use strict";
 
@@ -26,6 +26,20 @@
 
   function copyRef(team) {
     return { name: String(team.name), emoji: String(team.emoji), color: String(team.color) };
+  }
+
+  function toText(value) {
+    return value === undefined || value === null ? "" : String(value);
+  }
+
+  function toCount(value) {
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  }
+
+  // Tým do snímku: jen tři textová pole, nic dalšího (např. body) se nepřenáší.
+  function viewTeam(team) {
+    var source = team !== null && typeof team === "object" ? team : {};
+    return { name: toText(source.name), emoji: toText(source.emoji), color: toText(source.color) };
   }
 
   function sameRef(a, b) {
@@ -217,7 +231,8 @@
       if (state.lockedTeams.indexOf(player.team) !== -1) return { ok: false, reason: "locked" };
       if (now < player.penaltyUntil) return { ok: false, reason: "locked" };
       if (state.status === STATUS.waiting) {
-        player.penaltyUntil = now + TIMING.earlyPenaltyMs;
+        // Nekonečné nebo neplatné now by dalo NaN; bez platných hodin se netrestá.
+        if (Number.isFinite(now)) player.penaltyUntil = now + TIMING.earlyPenaltyMs;
         return { ok: false, reason: "early" };
       }
       var first = state.status === STATUS.armed;
@@ -281,6 +296,44 @@
       };
     }
 
+    function viewPhase(input) {
+      if (!input.enabled) return "off";
+      if (input.view !== "quiz" || input.locked) return "lobby";
+      if (input.revealed || state.status === STATUS.closed) return "closed";
+      if (state.status === STATUS.answering) return "answering";
+      if ((state.status === STATUS.armed || state.status === STATUS.collecting) && !state.paused) return "armed";
+      return "wait";
+    }
+
+    // Snímek pro mobil hráče. Skládá se pole po poli z vyjmenovaných hodnot; ctx ani objekt hráče se nekopírují,
+    // takže text otázky, odpověď ani cizí identifikátory se do výstupu nedostanou, ať je ve ctx cokoli.
+    function viewFor(clientId, ctx) {
+      var input = ctx !== null && typeof ctx === "object" ? ctx : { enabled: false };
+      var player = find(clientId);
+      var phase = viewPhase(input);
+      var live = phase !== "off" && phase !== "lobby";
+      var finished = phase === "answering" || phase === "closed";
+      var teamIndex = player ? player.team : null;
+      var teamLocked = player !== null && teamIndex !== null && state.lockedTeams.indexOf(teamIndex) !== -1;
+      var teamList = phase !== "off" && Array.isArray(input.teams) ? input.teams.slice(0, LIMITS.teams) : [];
+
+      var view = {};
+      if (Number.isSafeInteger(input.rev)) view.rev = input.rev;
+      view.phase = phase;
+      view.me = phase !== "off" && player ? { name: String(player.name), team: teamIndex } : null;
+      view.teams = teamList.map(viewTeam);
+      view.quiz = live ? { index: toCount(input.index), total: toCount(input.total) } : null;
+      view.buzz = {
+        canBuzz: phase === "armed" && teamIndex !== null && !teamLocked,
+        team: finished ? state.team : null,
+        by: finished ? state.by : null,
+        mine: finished && player !== null && state.byClientId === player.clientId,
+        teamLocked: live && teamLocked,
+        result: live && input.revealed === true ? state.result : null
+      };
+      return view;
+    }
+
     return {
       join: join,
       remove: remove,
@@ -294,7 +347,8 @@
       resolve: resolve,
       release: release,
       closeRound: closeRound,
-      round: round
+      round: round,
+      viewFor: viewFor
     };
   }
 

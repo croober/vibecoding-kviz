@@ -550,3 +550,268 @@ test("game-core.js nepoužívá hodiny ani časovače", async () => {
   const src = await readFile(new URL("./game-core.js", import.meta.url), "utf8");
   assert.doesNotMatch(src, /Date\.now|performance\.now|setTimeout|setInterval/);
 });
+
+// --- Opravy z review listu 2-2 ---
+
+test("buzz: zamčený tým ve stavu answering s jiným q dostane late (kontrola 3 před 4)", () => {
+  const g = armedGame();
+  g.buzz("a0", Q, 1, 0);
+  g.resolve();
+  g.release(); // tým 0 zamčen
+  g.buzz("b0", Q, 2, 0);
+  g.resolve(); // answering, tým 1
+  assert.equal(g.round().status, "answering");
+  assert.deepEqual(g.round().lockedTeams, [0]);
+  assert.equal(g.buzz("a1", Q + 1, 3, 0).reason, "late");
+  assert.equal(g.buzz("a1", Q, 3, 0).reason, "late");
+});
+
+test("openRound ze stavu collecting: starý stisk nevyhraje a výsledek se smaže", () => {
+  const g = armedGame();
+  g.buzz("a0", Q, 0, 0); // collecting s nejnižším rx
+  g.openRound(Q + 1);
+  g.arm();
+  g.buzz("c0", Q + 1, 50, 0);
+  assert.equal(g.resolve().clientId, "c0");
+  g.closeRound("correct");
+  assert.equal(g.round().result, "correct");
+  g.openRound(Q + 2);
+  assert.equal(g.round().result, null);
+});
+
+test("remapTeams: změna indexů z armed i collecting vrátí kolo do waiting a smaže stisky", () => {
+  const swapped = [TEAMS[1], TEAMS[0], TEAMS[2]];
+  let g = armedGame();
+  assert.equal(g.remapTeams(swapped), true);
+  const r = g.round();
+  assert.equal(r.status, "waiting");
+  assert.deepEqual(r.lockedTeams, []);
+
+  g = armedGame();
+  g.buzz("a0", Q, 0, 0);
+  assert.equal(g.round().status, "collecting");
+  g.remapTeams(swapped);
+  assert.equal(g.round().status, "waiting");
+  assert.equal(g.arm(), true);
+  g.buzz("c0", Q, 50, 0);
+  assert.equal(g.resolve().clientId, "c0"); // stisk a0 byl zahozen
+});
+
+test("buzz: neplatné now nenastaví trest", () => {
+  for (const bad of [Infinity, NaN, undefined]) {
+    const g = roundGame();
+    assert.equal(g.buzz("a0", Q, 0, bad).reason, "early", String(bad));
+    g.arm();
+    assert.deepEqual(g.buzz("a0", Q, 0, 0), { ok: true, first: true }, String(bad));
+  }
+});
+
+// --- Snímek pro mobil hráče (viewFor) ---
+
+const VIEW_CTX = { rev: 7, enabled: true, view: "quiz", locked: false, teams: TEAMS, index: 2, total: 10, revealed: false };
+
+function viewGame() {
+  return roundGame(); // a0, a1 (tým 0), b0 (tým 1), c0 (tým 2), kolo waiting
+}
+
+test("viewFor: tvar výstupu je přesně podle kontraktu", () => {
+  const g = viewGame();
+  g.arm();
+  const v = g.viewFor("a0", VIEW_CTX);
+  assert.deepEqual(Object.keys(v), ["rev", "phase", "me", "teams", "quiz", "buzz"]);
+  assert.deepEqual(Object.keys(v.buzz), ["canBuzz", "team", "by", "mine", "teamLocked", "result"]);
+  assert.deepEqual(Object.keys(v.me), ["name", "team"]);
+  assert.deepEqual(Object.keys(v.teams[0]), ["name", "emoji", "color"]);
+  assert.deepEqual(v.quiz, { index: 2, total: 10 });
+  assert.deepEqual(v.me, { name: "A0", team: 0 });
+  assert.equal(v.rev, 7);
+  for (const rev of [undefined, "7", 1.5, NaN, Infinity, 2 ** 53]) {
+    assert.equal("rev" in g.viewFor("a0", { ...VIEW_CTX, rev }), false, String(rev));
+  }
+});
+
+test("viewFor: do výstupu neunikne odpověď ani obsah ctx navíc", () => {
+  const g = viewGame();
+  g.arm();
+  const secrets = {
+    question: "TAJNA-OTAZKA", answers: ["TAJNA-A", "TAJNA-B"], correct: "TAJNA-SPRAVNA", picked: "TAJNA-ZVOLENA",
+    explanation: "TAJNE-VYSVETLENI", image: "TAJNY-OBRAZEK", token: "TAJNY-TOKEN", remoteKey: "TAJNY-KLIC"
+  };
+  const ctx = {
+    ...VIEW_CTX, ...secrets,
+    quiz: { questions: [{ question: "TAJNA-Q2", correct: "TAJNA-C2" }] },
+    teams: TEAMS.map((t) => ({ ...t, score: 987654 }))
+  };
+  const text = JSON.stringify(g.viewFor("a0", ctx));
+  const needles = [...Object.keys(secrets), "questions", "score", "987654", "TAJNA", "TAJNY", "TAJNE"];
+  for (const needle of needles) assert.equal(text.includes(needle), false, needle);
+});
+
+test("viewFor: neunikne clientId ani resume", () => {
+  const g = viewGame();
+  g.arm();
+  g.buzz("a0", Q, 1, 0);
+  g.resolve();
+  for (const id of ["a0", "a1", "b0", "c0", "neznamy"]) {
+    const text = JSON.stringify(g.viewFor(id, { ...VIEW_CTX, revealed: true }));
+    for (const hidden of ["a0", "a1", "b0", "c0", "clientId", "resume"]) assert.equal(text.includes(hidden), false, id + " " + hidden);
+  }
+});
+
+test("viewFor: buzz.result jen při revealed === true", () => {
+  const g = viewGame();
+  g.arm();
+  g.buzz("a0", Q, 1, 0);
+  g.resolve();
+  g.closeRound("correct");
+  for (const revealed of [false, undefined, 1, "true"]) {
+    assert.equal(g.viewFor("a0", { ...VIEW_CTX, revealed }).buzz.result, null, String(revealed));
+  }
+  assert.equal(g.viewFor("a0", { ...VIEW_CTX, revealed: true }).buzz.result, "correct");
+  const h = viewGame();
+  h.arm();
+  h.buzz("a0", Q, 1, 0);
+  h.resolve();
+  h.closeRound("wrong");
+  assert.equal(h.viewFor("b0", { ...VIEW_CTX, revealed: true }).buzz.result, "wrong");
+});
+
+test("viewFor: fáze podle ctx a stavu kola", () => {
+  const phase = (g, ctx = VIEW_CTX) => g.viewFor("a0", ctx).phase;
+  const off = viewGame().viewFor("a0", { ...VIEW_CTX, enabled: false });
+  assert.equal(off.phase, "off");
+  assert.equal(off.me, null);
+  assert.deepEqual(off.teams, []);
+  assert.equal(off.quiz, null);
+
+  const g = viewGame();
+  const lobby = g.viewFor("a0", { ...VIEW_CTX, view: "setup" });
+  assert.equal(lobby.phase, "lobby");
+  assert.equal(lobby.quiz, null);
+  assert.equal(phase(g, { ...VIEW_CTX, locked: true }), "lobby");
+
+  assert.equal(phase(g), "wait"); // waiting
+  g.arm();
+  assert.equal(phase(g), "armed");
+  g.setPaused(true);
+  assert.equal(phase(g), "wait");
+  g.setPaused(false);
+  assert.equal(phase(g, { ...VIEW_CTX, revealed: true }), "closed"); // odhalení při armed
+  g.buzz("a0", Q, 1, 0);
+  assert.equal(phase(g), "armed"); // collecting
+  g.resolve();
+  assert.equal(phase(g), "answering");
+  g.closeRound("correct");
+  assert.equal(phase(g), "closed");
+});
+
+test("viewFor: canBuzz jen v armed pro hráče s nezamčeným týmem", () => {
+  const g = viewGame();
+  const can = (id) => g.viewFor(id, VIEW_CTX).buzz.canBuzz;
+  assert.equal(can("a0"), false); // waiting
+  g.arm();
+  assert.equal(can("a0"), true);
+  assert.equal(can("neznamy"), false);
+  g.buzz("a0", Q, 1, 0);
+  g.resolve();
+  assert.equal(can("b0"), false); // answering
+  g.release();
+  assert.equal(can("a1"), false); // zamčený tým
+  assert.equal(can("b0"), true);
+  g.setPaused(true);
+  assert.equal(can("b0"), false);
+  g.setPaused(false);
+  g.closeRound(null);
+  assert.equal(can("b0"), false);
+
+  const h = createGame();
+  h.join("a", "A", 0, TEAMS);
+  h.join("x", "X", 2, TEAMS);
+  h.remapTeams([TEAMS[0], TEAMS[1]]); // x bez týmu
+  h.openRound(Q);
+  h.arm();
+  assert.equal(h.viewFor("x", VIEW_CTX).buzz.canBuzz, false);
+  assert.equal(h.viewFor("x", VIEW_CTX).me.team, null);
+  assert.equal(h.viewFor("neznamy", VIEW_CTX).me, null);
+});
+
+test("viewFor: vítěz, spoluhráč a ostatní v answering; v armed bez vítěze", () => {
+  const g = viewGame();
+  g.arm();
+  const armed = g.viewFor("a0", VIEW_CTX).buzz;
+  assert.equal(armed.team, null);
+  assert.equal(armed.by, null);
+  g.buzz("a0", Q, 1, 0);
+  g.resolve();
+  const winner = g.viewFor("a0", VIEW_CTX).buzz;
+  const mate = g.viewFor("a1", VIEW_CTX).buzz;
+  const other = g.viewFor("b0", VIEW_CTX).buzz;
+  assert.equal(winner.mine, true);
+  assert.equal(mate.mine, false);
+  assert.equal(other.mine, false);
+  for (const b of [winner, mate, other]) {
+    assert.equal(b.team, 0);
+    assert.equal(b.by, "A0");
+  }
+  // mimo fázi answering/closed (lobby) se vítěz neprozradí
+  const lobby = g.viewFor("a0", { ...VIEW_CTX, view: "setup" }).buzz;
+  assert.equal(lobby.team, null);
+  assert.equal(lobby.by, null);
+  assert.equal(lobby.mine, false);
+});
+
+test("viewFor: teamLocked po release jen u hráčů zamčeného týmu", () => {
+  const g = viewGame();
+  g.arm();
+  g.buzz("a0", Q, 1, 0);
+  g.resolve();
+  g.release();
+  assert.equal(g.viewFor("a0", VIEW_CTX).buzz.teamLocked, true);
+  assert.equal(g.viewFor("a1", VIEW_CTX).buzz.teamLocked, true);
+  assert.equal(g.viewFor("b0", VIEW_CTX).buzz.teamLocked, false);
+  assert.equal(g.viewFor("neznamy", VIEW_CTX).buzz.teamLocked, false);
+});
+
+test("viewFor: týmy se omezí na čtyři a převedou na řetězce", () => {
+  const g = viewGame();
+  const five = [...TEAMS, { name: "D", emoji: "d", color: "d" }, { name: "E", emoji: "e", color: "e" }];
+  assert.equal(g.viewFor("a0", { ...VIEW_CTX, teams: five }).teams.length, LIMITS.teams);
+  const v = g.viewFor("a0", { ...VIEW_CTX, teams: [{ name: 42, color: "#fff" }, null, "x"] });
+  assert.deepEqual(v.teams, [{ name: "42", emoji: "", color: "#fff" }, { name: "", emoji: "", color: "" }, { name: "", emoji: "", color: "" }]);
+  assert.deepEqual(g.viewFor("a0", { ...VIEW_CTX, teams: "nepole" }).teams, []);
+  assert.deepEqual(g.viewFor("a0", { ...VIEW_CTX, index: -1, total: 1.5 }).quiz, { index: 0, total: 0 });
+});
+
+test("viewFor: neplatné ctx nebo clientId nevyhodí a dá fázi off", () => {
+  const g = viewGame();
+  for (const [id, ctx] of [["x", null], ["x", 5], [undefined, {}], ["a0", undefined], ["a0", "text"]]) {
+    const v = g.viewFor(id, ctx);
+    assert.equal(v.phase, "off");
+    assert.equal(v.me, null);
+    assert.equal(v.buzz.canBuzz, false);
+  }
+});
+
+test("viewFor: bez vedlejších účinků", () => {
+  const g = viewGame();
+  g.arm();
+  g.buzz("a0", Q, 1, 0);
+  const players = g.players();
+  const round = g.round();
+  const first = g.viewFor("a0", VIEW_CTX);
+  const second = g.viewFor("a0", VIEW_CTX);
+  assert.deepEqual(first, second);
+  assert.notEqual(first, second);
+  assert.deepEqual(g.players(), players);
+  assert.deepEqual(g.round(), round);
+});
+
+test("viewFor: ve zdroji není Object.assign, rozbalení objektu ani cyklus přes klíče", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = (await readFile(new URL("./game-core.js", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+  const start = src.indexOf("function viewPhase");
+  const end = src.search(/return \{\s+join: join/);
+  const body = src.slice(start, end);
+  assert.ok(start > 0 && end > start);
+  assert.doesNotMatch(body, /Object\.assign|\.\.\.|for\s*\(\s*var\s+\w+\s+in\s|Object\.(keys|entries|values)/);
+});

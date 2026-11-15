@@ -504,13 +504,106 @@ test("closeRound: výsledek jen s vítězem a platnou hodnotou", () => {
   assert.equal(r.result, null);
 });
 
-test("join: hráč odpovídajícího týmu nesmí měnit tým, jiný ano", () => {
+test("join: hráč odpovídajícího týmu nesmí měnit tým, ani jiný hráč během kola", () => {
   const g = armedGame();
   g.buzz("a0", Q, 1, 0);
   assert.equal(g.join("a0", "A0", 1, TEAMS).reason, "locked"); // collecting se stiskem
   g.resolve();
   assert.equal(g.join("a1", "A1", 1, TEAMS).reason, "locked"); // answering, tým 0
-  assert.equal(g.join("b0", "B0", 2, TEAMS).ok, true);
+  assert.equal(g.join("b0", "B0", 2, TEAMS).reason, "locked"); // answering, jiný tým
+});
+
+// Hra s kolem ve zvoleném stavu; hráč a0 má tým 0, b0 tým 1.
+const ROUND_STATES = {
+  waiting: () => roundGame(),
+  armed: () => armedGame(),
+  collecting: () => {
+    const g = armedGame();
+    g.buzz("b0", Q, 1, 0);
+    return g;
+  },
+  answering: () => {
+    const g = armedGame();
+    g.buzz("b0", Q, 1, 0);
+    g.resolve();
+    return g;
+  }
+};
+
+function playerOf(g, clientId) {
+  return g.players().find((p) => p.clientId === clientId);
+}
+
+test("join: změna týmu za běžícího kola je locked a nic nezmění", () => {
+  for (const [status, make] of Object.entries(ROUND_STATES)) {
+    const g = make();
+    assert.equal(g.round().status, status);
+    assert.equal(g.join("a0", "Nové", 1, TEAMS).reason, "locked", status);
+    const p = playerOf(g, "a0");
+    assert.equal(p.team, 0, status);
+    assert.equal(p.name, "A0", status);
+  }
+});
+
+test("join: mimo běžící kolo (idle, closed) jde tým změnit", () => {
+  let g = createGame();
+  g.join("a0", "A0", 0, TEAMS);
+  assert.equal(g.round().status, "idle");
+  assert.equal(g.join("a0", "A0", 1, TEAMS).ok, true);
+  assert.equal(playerOf(g, "a0").team, 1);
+
+  g = armedGame();
+  g.closeRound(null);
+  assert.equal(g.join("a0", "A0", 2, TEAMS).ok, true);
+  assert.equal(playerOf(g, "a0").team, 2);
+});
+
+test("join: zamčený tým nepřeběhne do jiného týmu a znovu nezabzučí", () => {
+  const g = armedGame();
+  g.buzz("a0", Q, 1, 0);
+  g.resolve();
+  assert.deepEqual(g.release(), { open: true }); // tým 0 zamčen
+  assert.equal(g.join("a0", "A0", 1, TEAMS).reason, "locked");
+  assert.equal(g.buzz("a0", Q, 5, 0).reason, "locked");
+});
+
+test("join: přezdívka při stejném týmu projde v každém stavu kola, kromě odpovídajícího týmu", () => {
+  for (const [status, make] of Object.entries(ROUND_STATES)) {
+    const g = make();
+    // b0 odpovídá (collecting se stiskem, answering) – jeho pravidlo zůstává locked
+    const busy = status === "collecting" || status === "answering";
+    assert.equal(g.join("b0", "Nové B", 1, TEAMS).ok, !busy, status);
+    // hráč jiného týmu přezdívku změní vždy
+    assert.equal(g.join("c0", "Nové C", 2, TEAMS).ok, true, status);
+    assert.equal(playerOf(g, "c0").name, "Nové C", status);
+  }
+});
+
+test("join: nový hráč se během běžícího kola zapíše do libovolného týmu", () => {
+  for (const [status, make] of Object.entries(ROUND_STATES)) {
+    const g = make();
+    assert.equal(g.join("nový", "Nový", 2, TEAMS).ok, true, status);
+    assert.equal(playerOf(g, "nový").team, 2, status);
+  }
+});
+
+test("join: hráč bez týmu si během běžícího kola tým vybere", () => {
+  const g = roundGame();
+  g.remapTeams([TEAMS[0], TEAMS[2]]); // tým Modří zmizel, b0 je bez týmu (a kolo je znovu waiting)
+  assert.equal(playerOf(g, "b0").team, null);
+  assert.equal(g.round().status, "waiting");
+  assert.equal(g.join("b0", "B0", 1, [TEAMS[0], TEAMS[2]]).ok, true);
+  assert.equal(playerOf(g, "b0").team, 1);
+});
+
+test("join: po openRound další otázky tým nejde měnit, až po closeRound", () => {
+  const g = armedGame();
+  g.closeRound(null);
+  g.openRound(Q + 1);
+  assert.equal(g.round().status, "waiting");
+  assert.equal(g.join("a0", "A0", 1, TEAMS).reason, "locked");
+  g.closeRound(null);
+  assert.equal(g.join("a0", "A0", 1, TEAMS).ok, true);
 });
 
 test("remapTeams: změna indexů v answering vrátí kolo do waiting, beze změny nic", () => {

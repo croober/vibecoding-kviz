@@ -97,6 +97,16 @@
       return false;
     }
 
+    // Kolo běží (od otevření po odpověď)? Mimo ně (idle, closed) jde tým měnit.
+    function roundRunning() {
+      return state.status === STATUS.waiting || state.status === STATUS.armed || state.status === STATUS.collecting || state.status === STATUS.answering;
+    }
+
+    // Hráč s týmem chce během běžícího kola přejít do jiného týmu? Zamčený tým by tak přeběhl a bzučel znovu.
+    function switchesTeamInRound(player, team) {
+      return roundRunning() && player.team !== null && player.team !== team;
+    }
+
     // Vrátí rozehrané kolo do čekání po změně týmů: zámky i vítěz by ukazovaly na jiné týmy (volající znovu odjistí).
     function resetRoundAfterRemap() {
       if (state.status !== STATUS.armed && state.status !== STATUS.collecting && state.status !== STATUS.answering) return;
@@ -125,7 +135,7 @@
       // remapTeams změnu počtu nepoznal a hráč by přešel do cizího týmu na svém indexu.
       if (knownTeamCount !== null && knownTeamCount !== teams.length) remapTeams(teams);
       var player = find(clientId);
-      if (player && teamBusy(player)) return { ok: false, reason: "locked" };
+      if (player && (teamBusy(player) || switchesTeamInRound(player, team))) return { ok: false, reason: "locked" };
       if (!player && list.length >= maxPlayers && !freeSlot()) return { ok: false, reason: "full" };
 
       var taken = Object.create(null); // přezdívka může být i „__proto__“ nebo „constructor“

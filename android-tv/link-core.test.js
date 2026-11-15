@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import "./core.js";
 import "./link-core.js";
 
-const { PROTOCOL, LIMITS, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, fieldView, stateView, sameState } = globalThis.KvizLinkCore;
+const { PROTOCOL, LIMITS, REMOTE_KEY_LENGTH, newRemoteKey, buildPlayerUrl, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, fieldView, stateView, sameState } = globalThis.KvizLinkCore;
 
 const parse = (obj) => parseMessage(JSON.stringify({ v: PROTOCOL, ...obj }));
 const BAD = { ok: false, code: "bad_message" };
@@ -38,7 +38,7 @@ test("parseMessage: neplatný vstup vrací bad_message a nevyhazuje", () => {
     JSON.stringify({ v: 1, t: "key", action: "format_disk", seq: 1 }),
     JSON.stringify({ v: 1, t: "key", action: "constructor", seq: 1 }),
     JSON.stringify({ v: 1, t: "hello", clientId: "krátké", role: "remote" }),
-    JSON.stringify({ v: 1, t: "hello", clientId: "abcd1234", role: "player" }),
+    JSON.stringify({ v: 1, t: "hello", clientId: "abcd1234", role: "admin" }),
     JSON.stringify({ v: 1, t: "hello", clientId: "abcd1234", role: "remote", name: "x".repeat(LIMITS.name + 1) }),
     JSON.stringify({ v: 1, t: "toString" }),
     "x".repeat(LIMITS.message + 1)
@@ -84,6 +84,69 @@ test("newToken: 6 znaků z abecedy", () => {
 
 test("buildUrl: adresa pro QR", () => {
   assert.equal(buildUrl("192.168.1.23", 8765, "ab12cd"), "http://192.168.1.23:8765/m/?t=ab12cd");
+});
+
+test("buildUrl: klíč ovladače", () => {
+  assert.equal(buildUrl("192.168.1.23", 8765, "ab12cd", "k".repeat(12)), "http://192.168.1.23:8765/m/?t=ab12cd&k=kkkkkkkkkkkk");
+  assert.equal(buildUrl("192.168.1.23", 8765, "ab12cd", ""), "http://192.168.1.23:8765/m/?t=ab12cd");
+});
+
+test("buildPlayerUrl: adresa pro hráče", () => {
+  assert.equal(buildPlayerUrl("192.168.1.23", 8765, "ab12cd"), "http://192.168.1.23:8765/m/player.html?t=ab12cd");
+});
+
+test("newRemoteKey: 12 znaků z abecedy", () => {
+  assert.equal(REMOTE_KEY_LENGTH, 12);
+  assert.equal(newRemoteKey(() => 0), "a".repeat(12));
+  for (let i = 0; i < 50; i++) assert.match(newRemoteKey(), /^[abcdefghjkmnpqrstuvwxyz23456789]{12}$/);
+});
+
+test("parseMessage: join a buzz", () => {
+  assert.deepEqual(parse({ t: "join", name: "Pepa", team: 2, seq: 1 }).msg, { v: 1, t: "join", name: "Pepa", team: 2, seq: 1 });
+  assert.deepEqual(parse({ t: "buzz", q: 0, seq: 2 }).msg, { v: 1, t: "buzz", q: 0, seq: 2 });
+});
+
+test("parseMessage: join s neplatnými poli vrací bad_message", () => {
+  const ok = { t: "join", name: "Pepa", team: 1, seq: 1 };
+  const variants = [
+    { team: 4 }, { team: -1 }, { team: 1.5 }, { team: "1" }, { team: undefined },
+    { name: "" }, { name: "x".repeat(17) }, { name: 5 }, { name: undefined },
+    { seq: undefined }, { seq: -1 }
+  ];
+  for (const v of variants) assert.deepEqual(parse({ ...ok, ...v }), BAD, JSON.stringify(v));
+});
+
+test("parseMessage: buzz s neplatnými poli vrací bad_message", () => {
+  const ok = { t: "buzz", q: 0, seq: 1 };
+  const variants = [{ q: -1 }, { q: 1.5 }, { q: "0" }, { q: undefined }, { seq: undefined }];
+  for (const v of variants) assert.deepEqual(parse({ ...ok, ...v }), BAD, JSON.stringify(v));
+});
+
+test("parseMessage: join a buzz zahodí neznámá pole včetně __proto__ a role", () => {
+  const raw = (o) => parseMessage(JSON.stringify({ v: 1, ...o }).replace("{", "{\"__proto__\":{\"a\":1},"));
+  const join = raw({ t: "join", name: "Pepa", team: 0, seq: 1, role: "remote", evil: 1 }).msg;
+  assert.deepEqual(join, { v: 1, t: "join", name: "Pepa", team: 0, seq: 1 });
+  assert.equal(join.a, undefined);
+  assert.deepEqual(raw({ t: "buzz", q: 3, seq: 1, role: "remote", evil: 1 }).msg, { v: 1, t: "buzz", q: 3, seq: 1 });
+});
+
+test("parseMessage: hello s rolí player a role mimo ROLES", () => {
+  assert.equal(parse({ t: "hello", clientId: "abcd1234", role: "player" }).ok, true);
+  for (const role of ["admin", "", null, undefined]) {
+    assert.deepEqual(parse({ t: "hello", clientId: "abcd1234", role }), BAD, String(role));
+  }
+});
+
+test("parseMessage: hello hráče nepřenáší name ani remoteKey", () => {
+  const r = parse({ t: "hello", clientId: "abcd1234", role: "player", name: "X", remoteKey: "abc" });
+  assert.deepEqual(r.msg, { v: 1, t: "hello", clientId: "abcd1234", role: "player" });
+  assert.deepEqual(parse({ t: "hello", clientId: "abcd1234", role: "player", remoteKey: 5 }), BAD);
+});
+
+test("parseMessage: hello ovladače s remoteKey", () => {
+  const h = (remoteKey) => parse({ t: "hello", clientId: "abcd1234", role: "remote", remoteKey });
+  for (const k of ["", "k".repeat(65), 5]) assert.deepEqual(h(k), BAD, String(k).length + "");
+  assert.equal(h("k".repeat(12)).msg.remoteKey, "k".repeat(12));
 });
 
 test("pickAddress: přednost 192.168, pak 10, pak 172.16–31", () => {

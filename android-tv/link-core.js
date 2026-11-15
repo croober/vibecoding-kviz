@@ -5,11 +5,13 @@
   "use strict";
 
   var PROTOCOL = 1;
-  var LIMITS = { text: 500, name: 16, message: 4096 };
+  var LIMITS = { text: 500, name: 16, message: 4096, players: 12, remoteKey: 64 };
   var CLIENT_ID_LENGTH = { min: 8, max: 32 };
   var TOKEN_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
   var TOKEN_LENGTH = 6;
-  var TYPES = ["hello", "key", "text"];
+  var TYPES = ["hello", "key", "text", "join", "buzz"];
+  var ROLES = ["remote", "player"];
+  var REMOTE_KEY_LENGTH = 12;
   var RESUME_LENGTH = 16;
   var MAX_TEAMS = 4;
   var VIEWS = ["setup", "loading", "quiz", "results", "archive"];
@@ -36,12 +38,17 @@
   // Každý validátor vrátí novou zprávu jen se známými poli, nebo null.
   function readHello(m) {
     if (!isString(m.clientId, CLIENT_ID_LENGTH.min, CLIENT_ID_LENGTH.max)) return null;
-    if (m.role !== "remote") return null;
+    if (ROLES.indexOf(m.role) < 0) return null;
     if (m.resume !== undefined && !isString(m.resume, 1, LIMITS.message)) return null;
     if (m.name !== undefined && !isString(m.name, 0, LIMITS.name)) return null;
+    if (m.remoteKey !== undefined && !isString(m.remoteKey, 1, LIMITS.remoteKey)) return null;
     var out = { v: PROTOCOL, t: "hello", clientId: m.clientId, role: m.role };
     if (m.resume !== undefined) out.resume = m.resume;
-    if (m.name !== undefined) out.name = m.name;
+    // Hráč posílá přezdívku jen přes join (tam se čistí) a klíč ovladače nemá.
+    if (m.role === "remote") {
+      if (m.name !== undefined) out.name = m.name;
+      if (m.remoteKey !== undefined) out.remoteKey = m.remoteKey;
+    }
     return out;
   }
 
@@ -60,7 +67,19 @@
     return out;
   }
 
-  var READERS = { hello: readHello, key: readKey, text: readText };
+  function readJoin(m) {
+    if (!isString(m.name, 1, LIMITS.name)) return null;
+    if (typeof m.team !== "number" || !Number.isSafeInteger(m.team) || m.team < 0 || m.team >= MAX_TEAMS) return null;
+    if (!isSeq(m.seq)) return null;
+    return { v: PROTOCOL, t: "join", name: m.name, team: m.team, seq: m.seq };
+  }
+
+  function readBuzz(m) {
+    if (!isSeq(m.q) || !isSeq(m.seq)) return null;
+    return { v: PROTOCOL, t: "buzz", q: m.q, seq: m.seq };
+  }
+
+  var READERS = { hello: readHello, key: readKey, text: readText, join: readJoin, buzz: readBuzz };
 
   // Validace zprávy z mobilu (nedůvěryhodný vstup). Nikdy nevyhazuje výjimku.
   function parseMessage(raw) {
@@ -103,9 +122,21 @@
     return randomText(TOKEN_LENGTH, random || Math.random);
   }
 
-  // Adresa pro QR: http://<ip>:<port>/m/?t=<token>
-  function buildUrl(ip, port, token) {
-    return "http://" + ip + ":" + port + "/m/?t=" + encodeURIComponent(token);
+  // Klíč ovladače: 12 znaků, výchozí zdroj je kryptografický.
+  function newRemoteKey(random) {
+    return randomText(REMOTE_KEY_LENGTH, random || secureRandom);
+  }
+
+  // Adresa ovladače pro QR: http://<ip>:<port>/m/?t=<token>[&k=<remoteKey>]
+  function buildUrl(ip, port, token, remoteKey) {
+    var url = "http://" + ip + ":" + port + "/m/?t=" + encodeURIComponent(token);
+    if (typeof remoteKey === "string" && remoteKey !== "") url += "&k=" + encodeURIComponent(remoteKey);
+    return url;
+  }
+
+  // Adresa pro hráče (bez klíče ovladače): http://<ip>:<port>/m/player.html?t=<token>
+  function buildPlayerUrl(ip, port, token) {
+    return "http://" + ip + ":" + port + "/m/player.html?t=" + encodeURIComponent(token);
   }
 
   // Priorita site-local IPv4: 192.168.x.x, pak 10.x.x.x, pak 172.16–31.x.x; jiné adresy se přeskočí.
@@ -279,8 +310,8 @@
   }
 
   root.KvizLinkCore = {
-    PROTOCOL: PROTOCOL, LIMITS: LIMITS, TOKEN_ALPHABET: TOKEN_ALPHABET, REMOTE_ACTIONS: REMOTE_ACTIONS,
-    parseMessage: parseMessage, commandOf: commandOf, newToken: newToken, buildUrl: buildUrl, pickAddress: pickAddress,
+    PROTOCOL: PROTOCOL, LIMITS: LIMITS, ROLES: ROLES, REMOTE_KEY_LENGTH: REMOTE_KEY_LENGTH, TOKEN_ALPHABET: TOKEN_ALPHABET, REMOTE_ACTIONS: REMOTE_ACTIONS,
+    parseMessage: parseMessage, commandOf: commandOf, newToken: newToken, newRemoteKey: newRemoteKey, buildUrl: buildUrl, buildPlayerUrl: buildPlayerUrl, pickAddress: pickAddress,
     createClients: createClients, fieldView: fieldView, stateView: stateView, sameState: sameState
   };
 })(typeof window !== "undefined" ? window : globalThis);

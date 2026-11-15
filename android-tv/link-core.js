@@ -179,9 +179,10 @@
   }
 
   // Ovladač projde, jen když TV má nastavený klíč a zpráva nese tentýž. Bez klíče na TV se nepřipojí nikdo.
+  // Krátký klíč TV (chyba v úložišti) by šel uhodnout, proto se bere jako nenastavený.
   function remoteAuthorized(msg, auth) {
     var expected = auth && auth.remoteKey;
-    if (typeof expected !== "string" || expected === "") return false;
+    if (typeof expected !== "string" || expected.length < REMOTE_KEY_LENGTH) return false;
     return sameSecret(msg.remoteKey, expected);
   }
 
@@ -194,8 +195,11 @@
   }
 
   // Registr klientů (mobilů). TV je autorita: drží identitu, `resume` a poslední přijaté `seq`.
-  // Klient se po výpadku nemaže, aby na něj šlo navázat; při zaplnění se uvolní nejstarší odpojený.
-  // Klient: { clientId, resume, role, name, connId, connected, lastSeq }; `name` má jen ovladač, hráč "".
+  // Klient se po výpadku nemaže, aby na něj šlo navázat. Při zaplnění se uvolní jeden odpojený:
+  // nejdřív nepřipnutý od nejnovějšího, pak připnutý od nejnovějšího; připojený nikdy. Jednorázové
+  // identity útočníka tak vytlačují samy sebe, ne hráče se zhasnutým telefonem ani ovladač.
+  // Klient: { clientId, resume, role, name, connId, connected, lastSeq, pinned }; `name` má jen ovladač, hráč "".
+  // `pinned`: ovladač od vzniku (prošel klíčem), hráč po `pin(connId)`; příznak se už neodebírá.
   function createClients(options) {
     var opts = options || {};
     var max = opts.max > 0 ? opts.max : 16;
@@ -215,12 +219,21 @@
       client.connected = false;
     }
 
+    // Nejnovější odpojený klient s daným příznakem `pinned` (pole je v pořadí vzniku), nebo -1.
+    function newestDisconnected(pinned) {
+      for (var i = clients.length - 1; i >= 0; i--) {
+        if (!clients[i].connected && clients[i].pinned === pinned) return i;
+      }
+      return -1;
+    }
+
     function freeSlot() {
       if (clients.length < max) return true;
-      for (var i = 0; i < clients.length; i++) {
-        if (!clients[i].connected) { clients.splice(i, 1); return true; }
-      }
-      return false;
+      var idx = newestDisconnected(false);
+      if (idx < 0) idx = newestDisconnected(true);
+      if (idx < 0) return false;
+      clients.splice(idx, 1);
+      return true;
     }
 
     // Požadované clientId může patřit někomu jinému (špatné resume) – pak TV přidělí vlastní.
@@ -244,7 +257,8 @@
       if (!freeSlot()) return { ok: false, code: "full" };
       var client = {
         clientId: uniqueId(msg.clientId), resume: randomText(RESUME_LENGTH, random), role: msg.role,
-        name: msg.role === "remote" ? msg.name || "" : "", connId: connId, connected: true, lastSeq: -1
+        name: msg.role === "remote" ? msg.name || "" : "", connId: connId, connected: true, lastSeq: -1,
+        pinned: msg.role === "remote"
       };
       clients.push(client);
       byConnId[connId] = client;
@@ -258,7 +272,12 @@
         if (!msg || ROLES.indexOf(msg.role) < 0) return { ok: false, code: "bad_message" };
         // Klíč se ověří dřív, než se registr jakkoli změní – odmítnutí nesmí nikoho odpojit.
         if (msg.role === "remote" && !remoteAuthorized(msg, auth)) return { ok: false, code: "forbidden" };
-        if (byConnId[connId]) unbind(byConnId[connId]);   // druhý hello na témže spojení
+        // Druhý hello na témže spojení smí jen tutéž identitu i s platným `resume`; jinak by jedno spojení
+        // zakládalo identity bez konce (špatné `resume` by nenavázalo zpět, jen vytvořilo nového klienta).
+        var bound = byConnId[connId];
+        var sameIdentity = bound && bound.clientId === msg.clientId && bound.role === msg.role && bound.resume === msg.resume;
+        if (bound && !sameIdentity) return { ok: false, code: "rehello" };
+        if (bound) unbind(bound);
         var found = find(msg.clientId);
         // Role se přes `resume` nepřenáší: hráč se cizím `resume` ovladače nestane ovladačem a naopak.
         var known = found && found.resume === msg.resume && found.role === msg.role ? found : null;
@@ -275,6 +294,13 @@
         return result;
       },
       byConn: function (connId) { return byConnId[connId] || null; },
+      // Připne klienta na spojení (volá TV po úspěšném `join`): při zaplnění registru se uvolní až po nepřipnutých.
+      pin: function (connId) {
+        var client = byConnId[connId];
+        if (!client) return false;
+        client.pinned = true;
+        return true;
+      },
       // Spojení skončilo: klient zůstane v registru. Spojení už nahrazené novým se nikoho nedotkne.
       drop: function (connId) {
         var client = byConnId[connId];

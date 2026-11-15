@@ -416,6 +416,226 @@ test("clients.hello: výchozí limit 12 hráčů při max 16", () => {
   assert.equal(clients.hello(14, hello(), AUTH).ok, true);
 });
 
+// --- délka klíče TV, druhé hello, připnutí a uvolňování místa (fáze 3, list 1) ---
+
+const REHELLO = { ok: false, code: "rehello" };
+const ids = (clients) => clients.list().map((c) => c.clientId);
+
+test("clients.hello: krátký klíč TV se bere jako nenastavený, i když ho zpráva nese", () => {
+  assert.equal(REMOTE_KEY.length, REMOTE_KEY_LENGTH);
+  const clients = createClients({});
+  for (const len of [1, 6, REMOTE_KEY_LENGTH - 1]) {
+    const key = REMOTE_KEY.slice(0, len);
+    assert.deepEqual(clients.hello(1, hello({ remoteKey: key }), { remoteKey: key }), FORBIDDEN, String(len));
+  }
+  assert.equal(clients.list().length, 0);
+  assert.equal(clients.hello(1, hello(), AUTH).ok, true);
+});
+
+test("clients.hello: druhé hello s jiným clientId na témže spojení vrací rehello a registr nemění", () => {
+  const clients = createClients({});
+  const me = clients.hello(1, player({ clientId: playerId(1) }), AUTH).client;
+  assert.deepEqual(clients.hello(1, player({ clientId: playerId(2) }), AUTH), REHELLO);
+  assert.equal(clients.byConn(1), me);
+  assert.equal(me.connected, true);
+  assert.equal(clients.list().length, 1);
+  // i ovladač na spojení hráče s jiným clientId a platným klíčem
+  assert.deepEqual(clients.hello(1, hello(), AUTH), REHELLO);
+  assert.equal(clients.list().length, 1);
+});
+
+test("clients.hello: druhé hello se stejným clientId a jinou rolí vrací rehello, role se nezmění", () => {
+  const clients = createClients({});
+  const me = clients.hello(1, player({ clientId: playerId(1) }), AUTH).client;
+  assert.deepEqual(clients.hello(1, hello({ clientId: playerId(1), resume: me.resume }), AUTH), REHELLO);
+  assert.equal(clients.byConn(1), me);
+  assert.equal(me.role, "player");
+  assert.equal(clients.list().length, 1);
+});
+
+test("clients.hello: druhé hello se stejnou identitou a resume projde jako dřív", () => {
+  const clients = createClients({});
+  const me = clients.hello(1, player({ clientId: playerId(1) }), AUTH).client;
+  const again = clients.hello(1, player({ clientId: playerId(1), resume: me.resume }), AUTH);
+  assert.equal(again.ok, true);
+  assert.equal(again.created, false);
+  assert.equal(again.replaced, undefined);
+  assert.equal(again.client, me);
+  assert.equal(clients.byConn(1), me);
+  assert.equal(clients.list().length, 1);
+});
+
+test("clients.hello: na navázaném spojení se klíč ověří dřív než identita (forbidden, ne rehello)", () => {
+  const clients = createClients({});
+  const me = clients.hello(1, player({ clientId: playerId(1) }), AUTH).client;
+  assert.deepEqual(clients.hello(1, hello({ remoteKey: undefined }), AUTH), FORBIDDEN);
+  assert.equal(clients.byConn(1), me);
+  // ovladač na vlastním spojení se špatným klíčem i špatným resume
+  const remote = clients.hello(2, hello(), AUTH).client;
+  assert.deepEqual(clients.hello(2, hello({ remoteKey: "a".repeat(12), resume: "špatné" }), AUTH), FORBIDDEN);
+  assert.equal(clients.byConn(2), remote);
+});
+
+test("clients.hello: druhé hello se stejným clientId a rolí, ale jiným nebo chybějícím resume vrací rehello", () => {
+  const clients = createClients({});
+  const me = clients.hello(1, player({ clientId: playerId(1) }), AUTH).client;
+  const remote = clients.hello(2, hello(), AUTH).client;
+  for (const resume of [undefined, "špatné", "a".repeat(16)]) {
+    assert.deepEqual(clients.hello(1, player({ clientId: playerId(1), resume }), AUTH), REHELLO, "hráč " + resume);
+    assert.deepEqual(clients.hello(2, hello({ resume }), AUTH), REHELLO, "ovladač " + resume);
+  }
+  assert.equal(clients.byConn(1), me);
+  assert.equal(clients.byConn(2), remote);
+  assert.equal(clients.list().length, 2);
+  // s platným resume projde ovladač i hráč jako dřív
+  for (const [connId, msg, client] of [[1, player({ clientId: playerId(1), resume: me.resume }), me], [2, hello({ resume: remote.resume }), remote]]) {
+    const r = clients.hello(connId, msg, AUTH);
+    assert.equal(r.ok, true);
+    assert.equal(r.created, false);
+    assert.equal(r.client, client);
+  }
+  assert.equal(clients.list().length, 2);
+});
+
+test("clients.pin: neznámé spojení false, ovladač zůstane připnutý, příznak přežije drop a navázání", () => {
+  const clients = createClients({});
+  assert.equal(clients.pin(99), false);
+  const remote = clients.hello(1, hello(), AUTH).client;
+  assert.equal(remote.pinned, true);
+  assert.equal(clients.pin(1), true);
+  assert.equal(remote.pinned, true);
+
+  const me = clients.hello(2, player({ clientId: playerId(1) }), AUTH).client;
+  assert.equal(me.pinned, false);
+  assert.equal(clients.pin(2), true);
+  assert.equal(me.pinned, true);
+  clients.drop(2);
+  assert.equal(clients.pin(2), false);
+  assert.equal(me.pinned, true);
+  const again = clients.hello(3, player({ clientId: playerId(1), resume: me.resume }), AUTH);
+  assert.equal(again.client, me);
+  assert.equal(again.client.pinned, true);
+});
+
+test("clients.hello: plný registr uvolní nejdřív nepřipnuté od nejnovějšího, připnuté až nakonec", () => {
+  const clients = createClients({ max: 4 });
+  clients.hello(1, player({ clientId: playerId(1) }), AUTH);   // A – připnutý, nejstarší
+  clients.pin(1);
+  clients.drop(1);
+  clients.hello(2, player({ clientId: playerId(2) }), AUTH);   // B
+  clients.drop(2);
+  clients.hello(3, player({ clientId: playerId(3) }), AUTH);   // C – nejnovější
+  clients.drop(3);
+  clients.hello(4, player({ clientId: playerId(4) }), AUTH);   // připojený
+
+  assert.equal(clients.hello(5, player({ clientId: playerId(5) }), AUTH).ok, true);
+  assert.deepEqual(ids(clients), [playerId(1), playerId(2), playerId(4), playerId(5)]);
+  assert.equal(clients.hello(6, player({ clientId: playerId(6) }), AUTH).ok, true);
+  assert.deepEqual(ids(clients), [playerId(1), playerId(4), playerId(5), playerId(6)]);
+  clients.drop(5);
+  assert.equal(clients.hello(7, player({ clientId: playerId(7) }), AUTH).ok, true);
+  assert.deepEqual(ids(clients), [playerId(1), playerId(4), playerId(6), playerId(7)]);
+  // nepřipnutý odpojený už není → přijde na řadu připnutý
+  assert.equal(clients.hello(8, player({ clientId: playerId(8) }), AUTH).ok, true);
+  assert.deepEqual(ids(clients), [playerId(4), playerId(6), playerId(7), playerId(8)]);
+});
+
+test("clients.hello: připnutý hráč přežije i staršího nepřipnutého (rozhoduje pin, ne role ani stáří)", () => {
+  const clients = createClients({ max: 3 });
+  clients.hello(1, player({ clientId: playerId(1) }), AUTH);   // P1 – nepřipnutý, starší
+  clients.drop(1);
+  const p2 = clients.hello(2, player({ clientId: playerId(2) }), AUTH).client;   // P2 – připnutý, novější
+  clients.pin(2);
+  clients.drop(2);
+  clients.hello(3, player({ clientId: playerId(3) }), AUTH);   // P3 – připojený
+  assert.equal(clients.hello(4, player({ clientId: playerId(4) }), AUTH).ok, true);
+  assert.deepEqual(ids(clients), [playerId(2), playerId(3), playerId(4)]);
+  clients.drop(4);
+  const again = clients.hello(5, player({ clientId: playerId(2), resume: p2.resume }), AUTH);
+  assert.equal(again.ok, true);
+  assert.equal(again.created, false);
+  assert.equal(again.client, p2);
+});
+
+test("clients.hello: mezi připnutými se uvolní nejnovější odpojený", () => {
+  const clients = createClients({ max: 4 });
+  for (const n of [1, 2]) {
+    clients.hello(n, player({ clientId: playerId(n) }), AUTH);
+    clients.pin(n);
+    clients.drop(n);
+  }
+  clients.hello(3, player({ clientId: playerId(3) }), AUTH);
+  clients.hello(4, player({ clientId: playerId(4) }), AUTH);
+  assert.equal(clients.hello(5, player({ clientId: playerId(5) }), AUTH).ok, true);
+  assert.deepEqual(ids(clients), [playerId(1), playerId(3), playerId(4), playerId(5)]);
+});
+
+test("clients.hello: odpojený ovladač přežije, když je v registru nepřipnutý odpojený hráč", () => {
+  const clients = createClients({ max: 3 });
+  clients.hello(1, player({ clientId: playerId(1) }), AUTH);   // starší než ovladač
+  clients.drop(1);
+  const remote = clients.hello(2, hello(), AUTH).client;
+  clients.drop(2);
+  clients.hello(3, player({ clientId: playerId(3) }), AUTH);
+  assert.equal(clients.hello(4, player({ clientId: playerId(4) }), AUTH).ok, true);
+  assert.ok(clients.list().includes(remote));
+  assert.ok(!ids(clients).includes(playerId(1)));
+});
+
+test("clients.hello: připojený klient se neuvolní nikdy, plný registr připojených vrací full", () => {
+  const clients = createClients({ max: 2 });
+  clients.hello(1, player({ clientId: playerId(1) }), AUTH);
+  clients.hello(2, player({ clientId: playerId(2) }), AUTH);
+  clients.pin(2);
+  assert.deepEqual(clients.hello(3, player({ clientId: playerId(3) }), AUTH), FULL);
+  assert.deepEqual(ids(clients), [playerId(1), playerId(2)]);
+});
+
+test("clients.hello: útok jednorázovými identitami nevytlačí připnuté hráče ani ovladač", () => {
+  const clients = createClients({ max: 16 });
+  const kept = [];
+  for (const n of [1, 2, 3]) {                                   // připnutí hráči, nejstarší záznamy
+    kept.push(clients.hello(n, player({ clientId: playerId(n) }), AUTH).client);
+    clients.pin(n);
+    clients.drop(n);
+  }
+  kept.push(clients.hello(4, hello(), AUTH).client);             // ovladač
+  clients.drop(4);
+  for (let n = 11; n <= 18; n++) clients.hello(n, player({ clientId: playerId(n) }), AUTH);
+  for (let n = 21; n <= 24; n++) {
+    clients.hello(n, player({ clientId: playerId(n) }), AUTH);
+    clients.drop(n);
+  }
+  assert.equal(clients.list().length, 16);
+
+  for (let i = 0; i < 40; i++) {
+    const connId = 100 + i;
+    const r = clients.hello(connId, player({ clientId: "utok" + String(i).padStart(4, "0") }), AUTH);
+    assert.equal(r.ok, true, String(i));
+    clients.drop(connId);
+  }
+
+  assert.equal(clients.list().length, 16);
+  for (const c of kept) assert.ok(clients.list().includes(c), c.clientId);
+  kept.forEach((c, i) => {
+    const msg = c.role === "remote" ? hello({ resume: c.resume }) : player({ clientId: c.clientId, resume: c.resume });
+    const r = clients.hello(200 + i, msg, AUTH);
+    assert.equal(r.ok, true, c.clientId);
+    assert.equal(r.created, false, c.clientId);
+    assert.equal(r.client, c);
+  });
+});
+
+test("clients.list: pinned je jediné nové pole a je boolean", () => {
+  const clients = createClients({});
+  clients.hello(1, hello(), AUTH);
+  clients.hello(2, player({ clientId: playerId(1) }), AUTH);
+  for (const c of clients.list()) {
+    assert.deepEqual(Object.keys(c).sort(), ["clientId", "connId", "connected", "lastSeq", "name", "pinned", "resume", "role"]);
+    assert.equal(typeof c.pinned, "boolean");
+  }
+});
+
 test("allowedFor: co smí která role poslat", () => {
   for (const t of ["key", "text", "hello"]) assert.equal(allowedFor("remote", t), true, "remote " + t);
   for (const t of ["join", "buzz", "hello"]) assert.equal(allowedFor("player", t), true, "player " + t);

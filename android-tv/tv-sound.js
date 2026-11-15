@@ -1,4 +1,4 @@
-// TV nadstavba: zvuková odezva (správná / špatná odpověď, body, další otázka, výsledky, chyba…). Zvuky se syntetizují přes Web Audio API,
+// TV nadstavba: zvuková odezva (správná / špatná odpověď, body, další otázka, výsledky, chyba, bzučák…). Zvuky se syntetizují přes Web Audio API,
 // takže nepotřebují soubory ani licence. Vkládá se jen do APK (android-tv/prepare.mjs) před tv-keys.js; public/ se nemění.
 //
 // Spoléhá na věci z app.js: globály state, logEvent (obalí se; události pick, reveal, points, question, results), showError;
@@ -79,6 +79,8 @@
     results: { prio: 3, play: () => { [NOTE.c5, NOTE.e5, NOTE.g5, NOTE.c6].forEach((f, i) => tone(f, i * 0.14, 0.4, "triangle", 0.5)); tone(NOTE.e6, 0.6, 0.7, "triangle", 0.45); } },
     click: { prio: 0, play: () => tone(900, 0, 0.04, "sine", 0.22, 700) },
     error: { prio: 1, play: () => tone(160, 0, 0.22, "square", 0.22, 110) },
+    // bzučák: dva stejně vysoké ostré pulzy (ostatní zvuky kloužou nebo stoupají), volá tv-buzz.js
+    buzz: { prio: 2, play: () => { tone(740, 0, 0.12, "square", 0.3); tone(740, 0.16, 0.24, "square", 0.32); } },
   };
 
   // krátké zvuky nesmí přebít důležitější těsně po sobě (správná odpověď → body; kvíz hotový → první otázka)

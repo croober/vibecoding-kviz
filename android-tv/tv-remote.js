@@ -9,6 +9,7 @@
 //   funkce:  pick (obalí se kvůli automatickým bodům při jednom týmu), currentQ, showError (hláška nad lištou týmů), replayEntry(id) a seznam archive (rychlé „Hrát znovu“)
 //   prvky:   #barSettings, .topbar-actions, #topicBubbles (.bubble), .topic-row, #menuBtn, #menuPanel, #menuTvSettings, #emojiPicker, #topic, #topicSuggest, #teams, .scoreboard
 //   třídy:   .team, .answer, .side-btn, body.close-head
+// Z TV vrstvy volá (je-li načtená) KvizTvKeys.onBack (tv-keys.js) a KvizTvBuzz.onBack (tv-buzz.js: Zpět při bzučení uvolní tým).
 // Vystavuje window.KvizTvRemote = { handleBack, isField, confirmField } pro tv-link.js (mobilní ovládání).
 (() => {
   "use strict";
@@ -508,6 +509,7 @@
     if (!$("emojiPicker").hidden) return closeEmojiPicker();
     if (!$("menuPanel").hidden) { closeMenu(); return $("menuBtn").focus(); }
     if (!$("topicSuggest").hidden) return closeSuggest();
+    if (window.KvizTvBuzz && window.KvizTvBuzz.onBack()) return; // bzučák: tým neodpověděl (až za překryvy)
     const act = document.activeElement;
     if (act && act.classList && act.classList.contains("bubble")) return $("topic").focus();
     const s = appState();

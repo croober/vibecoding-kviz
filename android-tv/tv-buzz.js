@@ -186,7 +186,11 @@
     const basePick = pick;
     window.pick = function (key) {
       const q = questionNow();
-      if (!answering || appState().locked || !q || q.revealed) return basePick.apply(this, arguments);
+      const roundOpen = !appState().locked && !!q && !q.revealed && roundIsCurrent();
+      // Už označená špatná odpověď (i podržená klávesa) by jinak otázku odhalila a ostatní týmy by přišly o šanci.
+      if (roundOpen && wrongKeys.indexOf(key) !== -1) return undefined;
+      // Kolo jiné otázky (srovná se až při sync) nesmí dát bod ani druhou šanci týmu, který bzučel u předchozí.
+      if (!answering || !roundOpen) return basePick.apply(this, arguments);
       if (key !== q.correct && otherTeamCanAnswer()) {
         runSafely(() => giveSecondChance(key), "při druhé šanci");
         return undefined;

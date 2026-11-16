@@ -1,16 +1,19 @@
-// TV nadstavba, lobby hry s hráči: dialog „Hráči na mobilech“ (zapnutí hry, QR kód pro hráče, soupiska, odebrání hráče).
+// TV nadstavba, lobby hry s hráči: dialog „Hráči na mobilech“ (zapnutí hry, QR kód pro hráče, soupiska, odebrání hráče)
+// a karta „Hrát s mobily – bzučák“ na zadání s tlačítky Zapnout / Vypnout a Nastavení (ovládají se jako ostatní tlačítka zadání).
 // Vkládá se jen do APK (android-tv/prepare.mjs) hned za tv-game.js. Vzhled i chování dialogu napodobují „Ovládání z mobilu“ (tv-link.js).
-// Rozhraní: kontrakt hráčů (.claude-work/2026-11-15-hraci-buzzer/kontrakt.md) § 7 (KvizTvGame, prvky a texty TV).
+// Rozhraní: kontrakt hráčů (.claude-work/2026-11-15-hraci-buzzer/kontrakt.md) § 7 (KvizTvGame, prvky a texty TV) a § 8 (karta).
 //
 // Bezpečnost: přezdívky hráčů, názvy týmů a jména ovladačů jsou cizí text na promítané obrazovce. Do stránky jdou
-// jen přes textContent; innerHTML je tu jen u statické šablony dialogu bez proměnných. Adresa pro hráče je vždy
+// jen přes textContent; innerHTML je tu jen u statických šablon (dialog, karta, položka menu) bez proměnných. Adresa pro hráče je vždy
 // jen KvizTvGame.playerUrl() (bez klíče ovladače).
 //
 // Spoléhá na věci z app.js (při jejich změně zkontrolovat tenhle soubor):
 //   globály: state (teams[name, emoji]), confirmDialog, closeMenu
-//   prvky:   #menuBtn, #menuPanel .menu-box, dialog[open] (aktivní je první v DOM, viz tv-remote.js)
+//   prvky:   #main (sem první dítě #tvSideCards), #teams (změna dětí obnoví kartu), #menuBtn, #menuPanel .menu-box,
+//            dialog[open] (aktivní je první v DOM, viz tv-remote.js)
 // a na TV vrstvu: KvizTv (tv-server.js), KvizTvGame (tv-game.js), KvizTvLink.qrSvg a clients (tv-link.js),
-//   #menuTvLink a #tvLinkDialog (tv-link.js), #menuTvKeys (tv-keys.js), #tvSettingsDialog (tv-server.js).
+//   #menuTvLink, #tvLinkDialog a #tvLinkCard (tv-link.js; karta se přesouvá do #tvSideCards pod kartu hry),
+//   #menuTvKeys (tv-keys.js), #tvSettingsDialog (tv-server.js), prostorová navigace a Zpět (tv-remote.js).
 (() => {
   "use strict";
   const Game = window.KvizTvGame;
@@ -102,13 +105,13 @@
     box.append(icon, title);
   }
 
-  function renderStatus(enabled, connectedCount) {
-    const st = part("tvGameStatus");
+  // Stav připojení v dialogu i na kartě: uzel s <i> a <span>, třída „ok“ při aspoň jednom připojeném.
+  function renderStatus(st, enabled, connectedCount) {
     st.hidden = !enabled;
-    const [cls, icon, text] = connectedCount
-      ? ["ok", "ph-check-circle", `Připojeno hráčů: ${connectedCount}`]
-      : ["", "ph-hourglass-medium", "Zatím nikdo není připojený"];
-    st.className = "tv-game-status" + (cls ? " " + cls : "");
+    const [icon, text] = connectedCount
+      ? ["ph-check-circle", `Připojeno hráčů: ${connectedCount}`]
+      : ["ph-hourglass-medium", "Zatím nikdo není připojený"];
+    st.classList.toggle("ok", connectedCount > 0);
     st.querySelector("i").className = "ph " + icon;
     const span = st.querySelector("span");
     if (span.textContent !== text) span.textContent = text; // aria-live: číst jen skutečnou změnu
@@ -230,36 +233,93 @@
       renderQrBox(s.enabled, url);
       qrKey = key;
     }
-    renderStatus(s.enabled, list.filter((p) => p.connected).length);
+    renderStatus(part("tvGameStatus"), s.enabled, list.filter((p) => p.connected).length);
     renderPlayers(list);
   }
 
-  /* ---------- Karta na zadání: QR a kdo je v kterém týmu (jen k zobrazení, bez fokusu) ---------- */
-  // Vložená jako první dítě <main>, ukazuje se jen v pohledu setup (CSS). Karta ovladače se při hře s hráči skrývá (tv-link.js).
+  /* ---------- Karta „Hrát s mobily – bzučák“ na zadání (kontrakt § 8) ---------- */
+  // Boční sloupec #tvSideCards je první dítě <main>: nahoře karta hry, pod ní karta ovladače z tv-link.js (přesunutý uzel).
+  // Ukazuje se jen v pohledu setup (CSS). Stav off: pozvánka a Zapnout; stav on: QR pro hráče, počet, Vypnout, Nastavení, jména.
+  // QR hráčů je jen ve stavu on a karta ovladače se při zapnuté hře skrývá (tv-link.js), takže oba QR nejsou vidět zároveň.
+  // Tlačítka vznikají jednou; obnova mění jen texty, ikony, třídy a hidden, aby fokus ovladače nespadl na body.
   const card = document.createElement("aside");
   card.className = "tv-game-card";
   card.id = "tvGameCard";
-  card.setAttribute("aria-label", "Připoj se ke hře");
-  card.hidden = true;
+  card.setAttribute("aria-label", "Hrát s mobily – bzučák");
   card.innerHTML = `
     <div class="tv-game-card-box">
-      <div class="tv-game-card-qr"></div>
-      <b class="tv-game-card-title">Připoj se ke hře</b>
-      <p class="tv-game-card-text">Naskenuj QR kód mobilem a vyber si tým.</p>
-      <ul class="tv-game-card-teams"></ul>
+      <div class="tv-game-card-qr" hidden></div>
+      <i class="tv-game-card-icon" aria-hidden="true"></i>
+      <b class="tv-game-card-title"></b>
+      <p class="tv-game-card-text"></p>
+      <p class="tv-game-card-status" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span></span></p>
+      <p class="tv-game-card-warn" role="note" hidden><i class="ph ph-warning" aria-hidden="true"></i><span>Bzučák potřebuje aspoň 2 týmy.</span></p>
+      <div class="tv-game-card-actions">
+        <button type="button" id="tvGameCardToggle"><i aria-hidden="true"></i><span></span></button>
+        <button type="button" class="btn ghost" id="tvGameCardSettings" aria-label="Nastavení hry s hráči" hidden><i class="ph ph-gear-six" aria-hidden="true"></i><span>Nastavení</span></button>
+      </div>
+      <ul class="tv-game-card-teams" hidden></ul>
     </div>`;
-  const cardQr = card.querySelector(".tv-game-card-qr");
-  const cardTeams = card.querySelector(".tv-game-card-teams");
+  const inCard = (sel) => card.querySelector(sel);
+  const cardQr = inCard(".tv-game-card-qr");
+  const cardIcon = inCard(".tv-game-card-icon");
+  const cardTitle = inCard(".tv-game-card-title");
+  const cardText = inCard(".tv-game-card-text");
+  const cardStatus = inCard(".tv-game-card-status");
+  const cardWarn = inCard(".tv-game-card-warn");
+  const toggleBtn = inCard("#tvGameCardToggle");
+  const toggleIcon = toggleBtn.querySelector("i");
+  const toggleLabel = toggleBtn.querySelector("span");
+  const settingsBtn = inCard("#tvGameCardSettings");
+  const cardTeams = inCard(".tv-game-card-teams");
   const main = $("main");
-  if (main) main.prepend(card);
-  let cardUrl = null; // adresa, pro kterou je vykreslené QR karty
+  if (main) {
+    const side = document.createElement("div");
+    side.id = "tvSideCards";
+    side.className = "tv-side-cards";
+    side.appendChild(card);
+    const linkCard = $("tvLinkCard");
+    if (linkCard) side.appendChild(linkCard); // tv-link.js drží referenci, přesun mu nevadí
+    main.prepend(side);
+  }
+  let cardQrKey = null; // „zapnuto|adresa“, pro kterou je vykreslené pole QR karty
 
-  function renderCardQr(url) {
-    if (url === cardUrl) return;
-    cardUrl = url;
+  const CARD_STATES = {
+    off: {
+      icon: "ph ph-bell-ringing",
+      title: "Hrát s mobily – bzučák",
+      text: "Hosté se připojí mobilem. Kdo první zabzučí, odpovídá za svůj tým.",
+      button: "btn primary",
+      buttonIcon: "ph ph-power",
+      label: "Zapnout",
+    },
+    on: {
+      icon: "",
+      title: "Připoj se ke hře",
+      text: "Naskenuj QR kód mobilem a vyber si tým.",
+      button: "btn ghost",
+      buttonIcon: "",
+      label: "Vypnout",
+    },
+  };
+
+  // QR jen ve stavu on a jen z Game.playerUrl(); bez adresy nebo bez SVG náhradní text (vzor renderQrBox).
+  function renderCardQr(enabled, url) {
+    const key = `${enabled}|${url || ""}`;
+    if (key === cardQrKey) return;
+    cardQrKey = key;
     cardQr.textContent = "";
-    const svg = url ? Link.qrSvg(url, QR_LABEL) : null;
-    if (svg) cardQr.appendChild(svg);
+    cardQr.hidden = !enabled;
+    const svg = enabled && url ? Link.qrSvg(url, QR_LABEL) : null;
+    cardQr.className = "tv-game-card-qr" + (svg ? "" : " empty") + (enabled && !url ? " offline" : "");
+    if (!enabled) return;
+    if (svg) { cardQr.appendChild(svg); return; }
+    const icon = document.createElement("i");
+    icon.setAttribute("aria-hidden", "true");
+    icon.className = url ? "ph ph-warning-circle" : "ph ph-wifi-slash";
+    const title = document.createElement("b");
+    title.textContent = url ? "QR kód se nepodařilo zobrazit. Adresa je v Nastavení." : "Televize není připojená k síti";
+    cardQr.append(icon, title);
   }
 
   // Přezdívky po týmech, nejvýš CARD_MAX_NAMES; zbytek jen počtem. Odpojený hráč zeslabeně a s textem.
@@ -291,12 +351,33 @@
     cardTeams.hidden = !cardTeams.children.length;
   }
 
+  const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  const setClass = (node, cls) => { if (node.className !== cls) node.className = cls; };
+
+  // Dva stavy podle Game.settings().enabled; karta je na zadání vidět vždy.
   function renderCard(s, url, list) {
-    renderCardQr(s.enabled ? url : null);
-    const visible = !!cardUrl && cardQr.firstChild !== null;
-    card.hidden = !visible;
-    document.body.classList.toggle("tv-game-card-on", visible); // místo vpravo, ať karta nepřekrývá zadání ani bubliny
-    if (visible) renderCardTeams(list);
+    const on = s.enabled;
+    const look = CARD_STATES[on ? "on" : "off"];
+    card.dataset.state = on ? "on" : "off";
+    setClass(cardIcon, ("tv-game-card-icon " + look.icon).trim());
+    cardIcon.hidden = !look.icon;
+    setText(cardTitle, look.title);
+    setText(cardText, look.text);
+    setClass(toggleBtn, look.button);
+    setClass(toggleIcon, look.buttonIcon);
+    toggleIcon.hidden = !look.buttonIcon;
+    setText(toggleLabel, look.label);
+    if (!on && document.activeElement === settingsBtn) toggleBtn.focus(); // skryté tlačítko by fokus ztratilo
+    settingsBtn.hidden = !on;
+
+    renderCardQr(on, url);
+    renderStatus(cardStatus, on, list.filter((p) => p.connected).length);
+    cardWarn.hidden = !(on && (appState().teams || []).length < 2);
+    if (on) renderCardTeams(list);
+    else { cardTeams.textContent = ""; cardTeams.hidden = true; }
+
+    card.hidden = false;
+    document.body.classList.toggle("tv-game-card-on", card.isConnected && !card.hidden); // místo vpravo na zadání (CSS)
   }
 
   /* ---------- Jedna obnova: nastavení a soupiska se čtou jednou pro kartu i dialog ---------- */
@@ -321,7 +402,8 @@
   dlg.addEventListener("close", () => {
     clearInterval(timer);
     timer = null;
-    const back = opener;
+    // Hra vypnutá v dialogu skryje Nastavení na kartě: fokus pak na Zapnout vedle něj.
+    const back = opener === settingsBtn && settingsBtn.hidden ? toggleBtn : opener;
     opener = null;
     if (back && back.isConnected && !back.closest("dialog:not([open])")) back.focus();
   });
@@ -330,32 +412,47 @@
 
   Game.onChange(refresh);
   Link.onChange(refresh);
+  const teamsNode = $("teams");
+  if (teamsNode) new MutationObserver(refresh).observe(teamsNode, { childList: true });
+  else console.warn("tv-lobby: chybí prvek #teams, karta se po změně týmů neobnoví");
   refresh(); // karta po startu aplikace (hra mohla zůstat zapnutá)
 
-  /* ---------- Přepínače a odebrání hráče ---------- */
+  /* ---------- Přepínače, tlačítka karty a odebrání hráče ---------- */
   const ask = (opts) => (typeof confirmDialog === "function" ? confirmDialog(opts) : Promise.resolve(true));
 
-  // Zapnutí vymění klíč ovladače: připojené ovladače ho dostanou samy, proto je moderátor nejdřív uvidí podle jmen.
+  // Jediná cesta k zapnutí (přepínač v dialogu i karta). Zapnutí vymění klíč ovladače: připojené ovladače
+  // ho dostanou samy, proto je moderátor nejdřív uvidí podle jmen. Po dokončení fokus zpět na back.
+  function requestEnable(back) {
+    const remotes = Link.clients().filter((c) => c.connected);
+    const names = remotes.map((c, n) => c.name || "Mobil " + (n + 1)).join(", ");
+    const confirmed = remotes.length
+      ? ask({
+          icon: "📱",
+          title: "Zapnout hru s hráči?",
+          text: `Kód ovladače se vymění a staré odkazy přestanou platit. Připojené ovladače zůstanou: ${names}. Pokud některý nepoznáváš, zruš to a v menu → Ovládání z mobilu dej Nový kód.`,
+          ok: "Zapnout",
+        })
+      : Promise.resolve(true);
+    return confirmed.then((ok) => {
+      if (ok) Game.setEnabled(true);
+      refresh();
+      if (back && back.isConnected && !back.closest("dialog:not([open])")) back.focus();
+    });
+  }
+
   enabledBox.addEventListener("change", () => {
     if (!enabledBox.checked) { Game.setEnabled(false); return; }
-    const remotes = Link.clients().filter((c) => c.connected);
-    if (!remotes.length) { Game.setEnabled(true); return; }
-    enabledBox.checked = false; // zůstane vypnuto, dokud moderátor nepotvrdí
-    const names = remotes.map((c, n) => c.name || "Mobil " + (n + 1)).join(", ");
-    ask({
-      icon: "📱",
-      title: "Zapnout hru s hráči?",
-      text: `Kód ovladače se vymění a staré odkazy přestanou platit. Připojené ovladače zůstanou: ${names}. Pokud některý nepoznáváš, zruš to a v menu → Ovládání z mobilu dej Nový kód.`,
-      ok: "Zapnout",
-    }).then((ok) => {
-      if (ok) Game.setEnabled(true);
-      if (dlg.open) {
-        refresh();
-        enabledBox.focus();
-      }
-    });
+    enabledBox.checked = false; // zůstane vypnuto, dokud se zapnutí nepotvrdí
+    requestEnable(enabledBox);
   });
   autoBox.addEventListener("change", () => Game.setAutoPoints(autoBox.checked));
+
+  // Vypnutí bez dotazu (R50); fokus zůstává na tlačítku, mění se jen jeho text.
+  toggleBtn.addEventListener("click", () => {
+    if (Game.settings().enabled) Game.setEnabled(false);
+    else requestEnable(toggleBtn);
+  });
+  settingsBtn.addEventListener("click", () => openDialog(settingsBtn));
 
   function askKick(clientId, name) {
     ask({

@@ -279,6 +279,16 @@ body.tv .tv-game-card {
   width: var(--tv-qr-card); height: 0; margin-right: calc(-1 * var(--tv-qr-reserve)); overflow: visible;
   pointer-events: none;
 }
+/* boční sloupec (tv-lobby.js): stejné umístění, uvnitř karta hry a pod ní karta ovladače */
+body.tv .tv-side-cards {
+  position: sticky; top: calc(3vh + 4px); z-index: 4; align-self: flex-end; flex: none;
+  width: var(--tv-qr-card); height: 0; margin-right: calc(-1 * var(--tv-qr-reserve)); overflow: visible;
+  pointer-events: none; display: flex; flex-direction: column; gap: 16px;
+}
+body.tv .tv-side-cards > .tv-link-card,
+body.tv .tv-side-cards > .tv-game-card { position: static; height: auto; margin: 0; width: auto; }
+body.tv .tv-side-cards > [hidden] { display: none; }
+body.tv:not([data-view="setup"]) .tv-side-cards,
 body.tv:not([data-view="setup"]) .tv-link-card,
 body.tv:not([data-view="setup"]) .tv-game-card { display: none; }
 body.tv .tv-link-card-box,
@@ -292,13 +302,35 @@ body.tv .tv-link-card-title,
 body.tv .tv-game-card-title { display: block; margin-top: 10px; font-size: 1.05rem; font-weight: 700; }
 body.tv .tv-link-card-text,
 body.tv .tv-game-card-text { margin: 2px 0 0; font-size: .9rem; line-height: 1.35; }
-/* karta hráčů: pod QR seznam přezdívek po týmech (výšku drží jen limit 12 jmen v tv-lobby.js, bez ořezu) */
+/* karta hry: sloupec propouští klepnutí jen na tlačítka */
+body.tv .tv-game-card button { pointer-events: auto; }
+body.tv .tv-game-card-icon { display: block; font-size: 1.6rem; color: var(--accent); }
+body.tv .tv-game-card-qr.empty {
+  background: transparent; border: 2px dashed var(--border); line-height: 1.4;
+  display: grid; place-content: center; justify-items: center; gap: 8px; padding: 12px; text-align: center;
+}
+body.tv .tv-game-card-qr.empty i { font-size: 2.4rem; color: var(--muted); }
+body.tv .tv-game-card-qr.offline i { color: var(--bad); }
+body.tv .tv-game-card-qr.empty b { font-size: .95rem; }
+body.tv .tv-game-card-status,
+body.tv .tv-game-card-warn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; margin: 8px 0 0;
+  font-size: .95rem; font-weight: 700; line-height: 1.35; text-align: left;
+}
+body.tv .tv-game-card-status i { font-size: 1.2rem; color: var(--muted); }
+body.tv .tv-game-card-status.ok i { color: var(--good); }
+body.tv .tv-game-card-warn i { flex: none; font-size: 1.2rem; color: var(--warn); }
+body.tv .tv-game-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+body.tv .tv-game-card-actions .btn { flex: 1 1 auto; min-height: 48px; font-size: 1rem; padding: 6px 12px; }
+/* karta hráčů: pod tlačítky seznam přezdívek po týmech (výšku drží jen limit 12 jmen v tv-lobby.js, bez ořezu) */
 body.tv .tv-game-card-teams { list-style: none; margin: 10px 0 0; padding: 0; text-align: left; font-size: .95rem; line-height: 1.35; }
 body.tv .tv-game-card-teams[hidden] { display: none; }
 body.tv .tv-game-card-team { margin-top: 6px; font-weight: 700; overflow-wrap: anywhere; }
 body.tv .tv-game-card-player { padding-left: 1em; overflow-wrap: anywhere; }
 body.tv .tv-game-card-player.off { color: var(--muted); font-style: italic; }
 body.tv .tv-game-card-more { margin-top: 6px; color: var(--muted); }
+/* skryté části karty podle stavu (off / on); až za pravidly s display */
+body.tv .tv-game-card [hidden] { display: none; }
 /* místo vpravo jen na zadání a jen když je karta vidět */
 body.tv.tv-link-card-on[data-view="setup"] main,
 body.tv.tv-game-card-on[data-view="setup"] main { padding-right: calc(24px + var(--tv-qr-reserve)); }
@@ -313,7 +345,8 @@ body.tv.tv-game-card-on[data-view="setup"] .bubbles { right: var(--tv-qr-reserve
   #tvGameDialog .tv-game-qr { width: min(60vw, 42vh); justify-self: center; }
   /* karta pod zadáním místo bočního sloupce */
   body.tv .tv-link-card,
-  body.tv .tv-game-card { position: static; order: 1; align-self: center; height: auto; margin: 16px 0 0; }
+  body.tv .tv-game-card,
+  body.tv .tv-side-cards { position: static; order: 1; align-self: center; height: auto; margin: 16px 0 0; }
   body.tv.tv-link-card-on[data-view="setup"] main,
   body.tv.tv-game-card-on[data-view="setup"] main { padding-right: 24px; }
   body.tv.tv-link-card-on[data-view="setup"] .bubbles,

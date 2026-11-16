@@ -322,7 +322,7 @@ body.tv .tv-game-card-status.ok i { color: var(--good); }
 body.tv .tv-game-card-warn i { flex: none; font-size: 1.2rem; color: var(--warn); }
 body.tv .tv-game-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 body.tv .tv-game-card-actions .btn { flex: 1 1 auto; min-height: 48px; font-size: 1rem; padding: 6px 12px; }
-/* karta hráčů: pod tlačítky seznam přezdívek po týmech (výšku drží jen limit 12 jmen v tv-lobby.js, bez ořezu) */
+/* karta hráčů: pod tlačítky seznam přezdívek po týmech (výšku drží jen CARD_MAX_NAMES a fitCardTeams v tv-lobby.js, bez ořezu) */
 body.tv .tv-game-card-teams { list-style: none; margin: 10px 0 0; padding: 0; text-align: left; font-size: .95rem; line-height: 1.35; }
 body.tv .tv-game-card-teams[hidden] { display: none; }
 body.tv .tv-game-card-team { margin-top: 6px; font-weight: 700; overflow-wrap: anywhere; }
@@ -336,6 +336,13 @@ body.tv.tv-link-card-on[data-view="setup"] main,
 body.tv.tv-game-card-on[data-view="setup"] main { padding-right: calc(24px + var(--tv-qr-reserve)); }
 body.tv.tv-link-card-on[data-view="setup"] .bubbles,
 body.tv.tv-game-card-on[data-view="setup"] .bubbles { right: var(--tv-qr-reserve); }
+
+/* nižší obrazovka (viewport TV 1120x630 a 1280x720): dvě karty ve sloupci (hra vypnutá + nespárovaný ovladač) se jinak nevejdou
+   a QR ovladače by se uťal; zmenší se jen jeho QR, karta zůstává stejně široká; třídu „both“ nastavuje tv-lobby.js;
+   úzké okno (karty pod zadáním) to neřeší */
+@media (max-height: 720px) and (min-width: 821px) {
+  body.tv .tv-side-cards.both .tv-link-card-qr { width: clamp(96px, 16vh, 140px); margin-inline: auto; }
+}
 
 /* úzké okno (ladění v prohlížeči) */
 @media (max-width: 820px) {

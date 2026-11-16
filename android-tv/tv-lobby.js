@@ -26,7 +26,9 @@
   const SLOW_RTT_MS = 300;
   const REFRESH_MS = 2000; // odezvy hráčů nevolají onChange, otevřený dialog se obnovuje sám
   const NO_TEAM = "none";
-  const CARD_MAX_NAMES = 12; // přezdívek na kartě, zbytek „a další {n}“
+  const CARD_MAX_NAMES = 10; // nejvýš přezdívek na kartě, zbytek „a další {n}“ (dál je ještě zkrátí fitCardTeams podle výšky)
+  // Rezerva pod kartou: stín a zaoblení boxu nesmí zasahovat do lišty týmů, ořez v #main by je uťal.
+  const CARD_FIT_MARGIN_PX = 8;
 
   /* ---------- Dialog ---------- */
   const dlg = document.createElement("dialog");
@@ -105,6 +107,9 @@
     box.append(icon, title);
   }
 
+  const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  const setClass = (node, cls) => { if (node.className !== cls) node.className = cls; };
+
   // Stav připojení v dialogu i na kartě: uzel s <i> a <span>, třída „ok“ při aspoň jednom připojeném.
   function renderStatus(st, enabled, connectedCount) {
     st.hidden = !enabled;
@@ -112,7 +117,7 @@
       ? ["ph-check-circle", `Připojeno hráčů: ${connectedCount}`]
       : ["ph-hourglass-medium", "Zatím nikdo není připojený"];
     st.classList.toggle("ok", connectedCount > 0);
-    st.querySelector("i").className = "ph " + icon;
+    setClass(st.querySelector("i"), "ph " + icon);
     const span = st.querySelector("span");
     if (span.textContent !== text) span.textContent = text; // aria-live: číst jen skutečnou změnu
   }
@@ -273,12 +278,12 @@
   const settingsBtn = inCard("#tvGameCardSettings");
   const cardTeams = inCard(".tv-game-card-teams");
   const main = $("main");
-  if (main) {
-    const side = document.createElement("div");
+  const linkCard = $("tvLinkCard");
+  const side = main ? document.createElement("div") : null;
+  if (side) {
     side.id = "tvSideCards";
     side.className = "tv-side-cards";
     side.appendChild(card);
-    const linkCard = $("tvLinkCard");
     if (linkCard) side.appendChild(linkCard); // tv-link.js drží referenci, přesun mu nevadí
     main.prepend(side);
   }
@@ -341,18 +346,43 @@
       }
       left -= Math.min(left, inGroup.length);
     }
-    const rest = list.length - (CARD_MAX_NAMES - left);
-    if (rest > 0) {
-      const more = document.createElement("li");
-      more.className = "tv-game-card-more";
-      more.textContent = `a další ${rest}`;
-      cardTeams.appendChild(more);
-    }
+    renderMoreRow(list.length - (CARD_MAX_NAMES - left));
     cardTeams.hidden = !cardTeams.children.length;
   }
 
-  const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
-  const setClass = (node, cls) => { if (node.className !== cls) node.className = cls; };
+  // Řádek „a další {n}“ vždy poslední; n = hráči bez zobrazené přezdívky.
+  function renderMoreRow(rest) {
+    let more = cardTeams.querySelector(".tv-game-card-more");
+    if (rest <= 0) { if (more) more.remove(); return; }
+    if (!more) {
+      more = document.createElement("li");
+      more.className = "tv-game-card-more";
+    }
+    setText(more, `a další ${rest}`);
+    cardTeams.appendChild(more);
+  }
+
+  // Seznam jmen se zkracuje, dokud karta nepřesahuje spodek #main (za ním by se ořízla bez náznaku).
+  // Mimo zadání (karta skrytá) a v úzkém okně (karta pod zadáním, sloupec není sticky) se nic neměří.
+  // Odebírá jen přezdívky a hlavičky týmů, které zůstaly bez jména; tlačítka, QR a stav zůstávají.
+  function fitCardTeams(total) {
+    if (!main || !side || card.offsetParent === null || getComputedStyle(side).position !== "sticky") return;
+    const box = card.querySelector(".tv-game-card-box");
+    const limit = main.getBoundingClientRect().bottom - CARD_FIT_MARGIN_PX;
+    const shown = () => cardTeams.querySelectorAll(".tv-game-card-player").length;
+    renderMoreRow(total - shown()); // řádek „a další“ se měří také, proto vzniká už před prvním měřením
+    for (let pass = 0; pass < CARD_MAX_NAMES && box.getBoundingClientRect().bottom > limit; pass++) {
+      const players = cardTeams.querySelectorAll(".tv-game-card-player");
+      const last = players[players.length - 1];
+      if (!last) break;
+      const head = last.previousElementSibling;
+      const next = last.nextElementSibling;
+      last.remove();
+      if (head && head.classList.contains("tv-game-card-team") && !(next && next.classList.contains("tv-game-card-player"))) head.remove();
+      renderMoreRow(total - shown());
+    }
+    cardTeams.hidden = !cardTeams.children.length;
+  }
 
   // Dva stavy podle Game.settings().enabled; karta je na zadání vidět vždy.
   function renderCard(s, url, list) {
@@ -378,6 +408,8 @@
 
     card.hidden = false;
     document.body.classList.toggle("tv-game-card-on", card.isConnected && !card.hidden); // místo vpravo na zadání (CSS)
+    if (side) side.classList.toggle("both", !!linkCard && !linkCard.hidden); // dvě karty ve sloupci: menší QR (CSS)
+    if (on) fitCardTeams(list.length); // až po rozložení stránky (třída těla mění šířku zadání)
   }
 
   /* ---------- Jedna obnova: nastavení a soupiska se čtou jednou pro kartu i dialog ---------- */
@@ -415,6 +447,9 @@
   const teamsNode = $("teams");
   if (teamsNode) new MutationObserver(refresh).observe(teamsNode, { childList: true });
   else console.warn("tv-lobby: chybí prvek #teams, karta se po změně týmů neobnoví");
+  // Skrytá karta (mimo zadání) nejde změřit: po návratu na zadání a po změně velikosti okna se seznam přepočítá z plného soupisu.
+  new MutationObserver(refresh).observe(document.body, { attributes: true, attributeFilter: ["data-view"] });
+  window.addEventListener("resize", refresh);
   refresh(); // karta po startu aplikace (hra mohla zůstat zapnutá)
 
   /* ---------- Přepínače, tlačítka karty a odebrání hráče ---------- */

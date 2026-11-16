@@ -14,7 +14,7 @@ Skripty a styly, které `npm run android:prepare` vkládá do APK (`www-android/
 | `tv-link.js` | most mezi nativním pluginem `KvizLink`, mobilní stránkou a ovládáním TV: příkazy z mobilu jako klávesy, snímek stavu, dialog a karta s QR |
 | `game-core.js` (`game-core.test.js`) | čistá herní logika hráčů a bzučáku (soupiska, kolo, snímek pro hráče), testy `npm run test:tv` |
 | `tv-game.js` | řadič hry s hráči: zprávy hráčů, nastavení, snímky hráčům |
-| `tv-lobby.js` | dialog Hráči na mobilech (zapnutí hry, QR pro hráče, soupiska, Odebrat) a karta na zadání |
+| `tv-lobby.js` | dialog Hráči na mobilech (zapnutí hry, QR pro hráče, soupiska, Odebrat) a karta Hrát s mobily – bzučák na zadání (zapnutí, QR pro hráče, přezdívky) |
 | `tv-buzz.js` | kolo bzučáku (odjištění, pruh „Odpovídá“, druhá šance, automatický bod) a obal `pick` |
 | `mobile/` | mobilní stránky, servíruje je TV: ovladač (`index.html`, `mobile.css`, `mobile.js`) a stránka hráče (`player.html`, `player.css`, `player.js`) |
 | `tv.css` | styly TV vrstvy |

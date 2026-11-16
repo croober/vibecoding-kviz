@@ -89,7 +89,7 @@ TV aplikace spouští vlastní malý server (nativní plugin `KvizLink`, WebSock
 2. Na úvodní obrazovce (zadání) je vpravo karta **Ovládání z mobilu** s QR kódem. Jinak otevři menu → **Ovládání z mobilu** (u Nastavení serveru je i tlačítko **Psát z mobilu**).
 3. Naskenuj QR fotoaparátem mobilu. Otevře se stránka ovladače. QR obsahuje klíč ovladače, proto se adresa textem ukáže jen tehdy, když nejde QR vykreslit.
 
-Karta QR na zadání se **skryje, jakmile je připojený mobil** (QR s kódem by jinak zůstal na promítané obrazovce), a po odpojení se vrátí. Bez adresy v síti (televize není na Wi-Fi) karta zmizí a dialog ukáže „Televize není připojená k síti“ a tlačítko **Zkusit znovu**. Dialog ukazuje stav (čeká na připojení / připojeno), seznam připojených mobilů s odezvou (u pomalého spojení varování) a tlačítko **Nový kód**.
+Karta ovladače stojí na zadání pod kartou hry (**Hrát s mobily – bzučák**). Karta QR na zadání se **skryje, jakmile je připojený mobil** (QR s kódem by jinak zůstal na promítané obrazovce), a po odpojení se vrátí. Bez adresy v síti (televize není na Wi-Fi) karta zmizí a dialog ukáže „Televize není připojená k síti“ a tlačítko **Zkusit znovu**. Dialog ukazuje stav (čeká na připojení / připojeno), seznam připojených mobilů s odezvou (u pomalého spojení varování) a tlačítko **Nový kód**.
 
 ### Co umí mobilní stránka
 
@@ -114,12 +114,12 @@ Hra s hráči je volitelná a vypnutá. Hráči se připojí svým mobilem (bez 
 ### Připojení
 
 1. Mobily hráčů připoj ke **stejné Wi-Fi** jako televize.
-2. Menu → **Hráči na mobilech** a zapni **Hra s hráči**. Dialog ukáže QR kód pro hráče; na zadání se navíc objeví karta **Připoj se ke hře** s QR a přezdívkami připojených hráčů (promítá se hráčům, nepřekrývá zadání). Kartu ukazuje jen hra na zadání, QR ovladače se tím skryje.
+2. Na úvodní obrazovce (zadání) je vpravo karta **Hrát s mobily – bzučák** s tlačítkem **Zapnout** (jinak menu → **Hráči na mobilech** → **Hra s hráči**). Po zapnutí karta ukáže QR pro hráče, počet a přezdívky připojených (nejvýš 10, podle výšky obrazovky i méně, zbytek jako „a další {n}“), tlačítko **Vypnout** a **Nastavení** (otevře dialog Hráči na mobilech s Odebrat a automatickým bodem). Karta se promítá hráčům a nepřekrývá zadání. QR ovladače se při zapnuté hře skryje.
 3. Hráč QR naskenuje, napíše přezdívku (nejvýš 16 znaků) a vybere tým. Stránka si přezdívku a tým pamatuje, po výpadku se připojí sama.
 4. Připojit se smí **nejvýš 12 hráčů**. Týmy se berou z lišty týmů na TV (nejvýš 4). Dialog ukazuje soupisku podle týmů s odezvou a tlačítkem **Odebrat**.
 5. **Bzučák potřebuje aspoň 2 týmy.** S jedním týmem se hráči připojit smějí, ale bzučák se neodjistí a bod za správnou odpověď se přičítá jako dřív (viz Jeden tým).
 
-Hra se zapíná a vypíná jen v dialogu Hráči na mobilech. Zapnutí hry i přepínač **Bod za správnou odpověď automaticky** (výchozí zapnutý) se pamatují (`localStorage` `kviz-tv-game-v1`).
+Hra se zapíná a vypíná na kartě na zadání nebo v dialogu Hráči na mobilech; zapnutí z obou míst se při připojeném ovladači ptá stejně (dotaz vyjmenuje jména ovladačů, čte se jen při otevření dotazu a může ho potvrdit i ovladač připojený z mobilu). Zapnutí hry i přepínač **Bod za správnou odpověď automaticky** (výchozí zapnutý) se pamatují (`localStorage` `kviz-tv-game-v1`).
 
 ### Pravidla kola
 
@@ -200,7 +200,11 @@ Stejný WebSocket jako ovladač (`/ws?t=<kód>`), verze protokolu `v: 1`, role `
 - [ ] Mobil: „Nový kód“ (s potvrzením) odpojí mobil; starý QR už nefunguje, nový ano.
 - [ ] Mobil: dialog Ovládání z mobilu ukáže víc připojených mobilů s odezvou; ovládat jde z libovolného.
 - [ ] Mobil: bez Wi-Fi karta QR zmizí a dialog ukáže „Televize není připojená k síti“; po připojení k síti „Zkusit znovu“ QR vrátí.
-- [ ] Hráči: menu → Hráči na mobilech → zapnout Hra s hráči; ukáže se QR pro hráče a na zadání karta „Připoj se ke hře“, která nepřekrývá zadání ani bubliny (čitelná ze 3 m).
+- [ ] Hráči: na zadání je vidět karta „Hrát s mobily – bzučák“ i při vypnuté hře a tlačítko **Zapnout** jde vybrat šipkami; po zapnutí (karta nebo menu → Hráči na mobilech) se ukáže QR pro hráče a karta nepřekrývá zadání ani bubliny (čitelná ze 3 m).
+- [ ] Hráči: zapnutí z karty s připojeným ovladačem se zeptá („Zapnout hru s hráči?“ se jmény ovladačů); bez ovladače se zapne rovnou.
+- [ ] Hráči: **Nastavení** na kartě otevře dialog Hráči na mobilech a **Zpět** vrátí fokus na kartu.
+- [ ] Hráči: s 12 hráči ve 4 týmech karta nepřesahuje lištu týmů a zbytek přezdívek je v „a další {n}“.
+- [ ] Hráči: s 8 hráči při velikosti rozhraní 1120 px karta nepřesahuje lištu týmů (i bez řádku „a další {n}“).
 - [ ] Hráči: tři mobily naskenují QR hráče, zadají přezdívku a tým; objeví se v soupisce i na kartě, odezva se obnovuje.
 - [ ] Hráči: dotaz „Zapnout hru s hráči?“ při připojeném ovladači vyjmenuje jména ovladačů; po zapnutí ovladač zůstane připojený a dál funguje.
 - [ ] Hráči: stará záložka (adresa) ovladače s původním klíčem je po zapnutí hry odmítnuta; mobil hráče (adresa `player.html`) televizi neovládá.

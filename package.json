@@ -9,7 +9,7 @@
     "android:prepare": "node android-tv/prepare.mjs",
     "cap:sync": "npm run android:prepare && cap sync android",
     "android:debug": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
-    "test:tv": "node --test android-tv/core.test.js android-tv/link-core.test.js android-tv/game-core.test.js"
+    "test:tv": "node --test android-tv/core.test.js android-tv/link-core.test.js android-tv/game-core.test.js android-tv/answer-core.test.js"
   },
   "author": "Tomáš Musiol",
   "license": "MIT",

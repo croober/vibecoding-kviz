@@ -287,6 +287,7 @@
       <div class="tv-game-card-actions">
         <button type="button" id="tvGameCardToggle"><i aria-hidden="true"></i><span></span></button>
         <button type="button" class="btn ghost" id="tvGameCardSettings" aria-label="Nastavení hry s hráči" hidden><i class="ph ph-gear-six" aria-hidden="true"></i><span>Nastavení</span></button>
+        <button type="button" class="btn ghost" id="tvGameCardRemote" aria-label="QR ovladače – ovládání z mobilu pro moderátora" hidden><i class="ph ph-device-mobile" aria-hidden="true"></i><span>QR ovladače</span></button>
       </div>
       <ul class="tv-game-card-teams" hidden></ul>
     </div>`;
@@ -301,6 +302,7 @@
   const toggleIcon = toggleBtn.querySelector("i");
   const toggleLabel = toggleBtn.querySelector("span");
   const settingsBtn = inCard("#tvGameCardSettings");
+  const remoteBtn = inCard("#tvGameCardRemote");
   const cardTeams = inCard(".tv-game-card-teams");
   const main = $("main");
   const linkCard = $("tvLinkCard");
@@ -437,6 +439,10 @@
     setText(toggleLabel, look.label);
     if (!on && document.activeElement === settingsBtn) toggleBtn.focus(); // skryté tlačítko by fokus ztratilo
     settingsBtn.hidden = !on;
+    // QR ovladače se na kartě nekreslí: tlačítko jen otevře dialog z tv-link.js (tam se QR ukáže po výslovném stisku).
+    const remoteHidden = !on || typeof Link?.openDialog !== "function";
+    if (remoteHidden && document.activeElement === remoteBtn) toggleBtn.focus();
+    remoteBtn.hidden = remoteHidden;
 
     renderCardQr(on, url);
     renderStatus(cardStatus, on, list.filter((p) => p.connected).length);
@@ -530,6 +536,7 @@
     else requestEnable(toggleBtn);
   });
   settingsBtn.addEventListener("click", () => openDialog(settingsBtn));
+  remoteBtn.addEventListener("click", () => Link?.openDialog?.(remoteBtn));
 
   function askKick(clientId, name) {
     ask({

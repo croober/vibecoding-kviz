@@ -567,7 +567,7 @@
     context: playerContext,
   };
 
-  window.KvizTvLink = { info, clients: clientList, restart, rotateRemoteKey, onChange, qrSvg, setPlayerMode, players };
+  window.KvizTvLink = { info, clients: clientList, restart, rotateRemoteKey, onChange, qrSvg, setPlayerMode, players, openDialog };
 
   /* ---------- QR kód (globál qrcode z vendor/qrcode.js, balíček qrcode-generator) ---------- */
   const SVG_NS = "http://www.w3.org/2000/svg";

@@ -114,7 +114,7 @@ Hra s hráči je volitelná a vypnutá. Hráči se připojí svým mobilem (bez 
 ### Připojení
 
 1. Mobily hráčů připoj ke **stejné Wi-Fi** jako televize.
-2. Na úvodní obrazovce (zadání) je vpravo karta **Hrát s mobily – bzučák** s tlačítkem **Zapnout** (jinak menu → **Hráči na mobilech** → **Hra s hráči**). Po zapnutí karta ukáže QR pro hráče, počet a přezdívky připojených (nejvýš 10, podle výšky obrazovky i méně, zbytek jako „a další {n}“), tlačítko **Vypnout** a **Nastavení** (otevře dialog Hráči na mobilech s Odebrat a automatickým bodem). Karta se promítá hráčům a nepřekrývá zadání. QR ovladače se při zapnuté hře skryje.
+2. Na úvodní obrazovce (zadání) je vpravo karta **Hrát s mobily – bzučák** s tlačítkem **Zapnout** (jinak menu → **Hráči na mobilech** → **Hra s hráči**). Po zapnutí karta ukáže QR pro hráče, počet a přezdívky připojených (nejvýš 10, podle výšky obrazovky i méně, zbytek jako „a další {n}“), tlačítko **Vypnout** a **Nastavení** (otevře dialog Hráči na mobilech s Odebrat a automatickým bodem). Karta se promítá hráčům a nepřekrývá zadání. QR ovladače se při zapnuté hře skryje; tlačítko **QR ovladače** na kartě otevře dialog Ovládání z mobilu (pro moderátora, QR se ukáže až tam).
 3. Hráč QR naskenuje, napíše přezdívku (nejvýš 16 znaků) a vybere tým. Stránka si přezdívku a tým pamatuje, po výpadku se připojí sama.
 4. Připojit se smí **nejvýš 12 hráčů**. Týmy se berou z lišty týmů na TV (nejvýš 4). Dialog ukazuje soupisku podle týmů s odezvou a tlačítkem **Odebrat**.
 5. **Bzučák potřebuje aspoň 2 týmy.** S jedním týmem se hráči připojit smějí, ale bzučák se neodjistí a bod za správnou odpověď se přičítá jako dřív (viz Jeden tým).
@@ -240,6 +240,7 @@ Hráč smí navíc poslat `answer` (`round` = číslo kola ze snímku `ask.round
 - [ ] Hráči: na zadání je vidět karta „Hrát s mobily – bzučák“ i při vypnuté hře a tlačítko **Zapnout** jde vybrat šipkami; po zapnutí (karta nebo menu → Hráči na mobilech) se ukáže QR pro hráče a karta nepřekrývá zadání ani bubliny (čitelná ze 3 m).
 - [ ] Hráči: zapnutí z karty s připojeným ovladačem se zeptá („Zapnout hru s hráči?“ se jmény ovladačů); bez ovladače se zapne rovnou.
 - [ ] Hráči: **Nastavení** na kartě otevře dialog Hráči na mobilech a **Zpět** vrátí fokus na kartu.
+- [ ] Hráči: **QR ovladače** na kartě (jen při zapnuté hře) otevře dialog Ovládání z mobilu s varováním pro moderátora, QR ovladače se na kartě nezobrazí a **Zpět** vrátí fokus na tlačítko.
 - [ ] Hráči: s 12 hráči ve 4 týmech karta nepřesahuje lištu týmů a zbytek přezdívek je v „a další {n}“.
 - [ ] Hráči: s 8 hráči při velikosti rozhraní 1120 px karta nepřesahuje lištu týmů (i bez řádku „a další {n}“).
 - [ ] Hráči: tři mobily naskenují QR hráče, zadají přezdívku a tým; objeví se v soupisce i na kartě, odezva se obnovuje.

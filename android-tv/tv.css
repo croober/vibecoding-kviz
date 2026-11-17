@@ -86,6 +86,36 @@ body.tv .tv-buzz-who {
   font-size: clamp(1.4rem, min(2.8vw, 4vh), 3rem); overflow-wrap: anywhere;
 }
 body.tv .tv-buzz-hint { margin: 4px 0 0; font-size: clamp(1rem, min(1.5vw, 2.2vh), 1.5rem); font-weight: 600; }
+/* pruh odpočtu a výsledku kola odpovědí (tv-answers.js): stejný tvar jako pruh „Odpovídá“, jiná barva */
+body.tv .tv-answers-bar {
+  margin: 0 0 clamp(8px, 1.4vh, 18px); padding: clamp(10px, 1.6vh, 18px) clamp(16px, 2vw, 28px);
+  background: var(--accent-soft); color: var(--text);
+  border: 2px solid var(--accent); border-left-width: 12px; border-radius: 16px;
+}
+body.tv .tv-answers-bar[hidden] { display: none; }
+body.tv .tv-answers-title {
+  margin: 0; font-family: var(--display); font-weight: 800; line-height: 1.15;
+  font-size: clamp(1.4rem, min(2.8vw, 4vh), 3rem); overflow-wrap: anywhere;
+}
+body.tv .tv-answers-meta { margin: 4px 0 0; font-size: clamp(1rem, min(1.5vw, 2.2vh), 1.5rem); font-weight: 600; }
+body.tv .tv-answers-meta[hidden] { display: none; }
+/* ukazatel zbývajícího času; stav sděluje i text „Zbývá n s“ */
+body.tv .tv-answers-progress {
+  height: clamp(8px, 1.2vh, 14px); margin-top: clamp(6px, 1vh, 12px); border-radius: 999px;
+  background: var(--border); overflow: hidden;
+}
+body.tv .tv-answers-progress::after {
+  content: ""; display: block; height: 100%; width: calc(var(--left, 0) * 100%);
+  background: var(--accent); transition: width .3s linear;
+}
+body.tv .tv-answers-bar:not([data-state="open"]) .tv-answers-progress { display: none; }
+body.tv .tv-answers-teams {
+  list-style: none; margin: clamp(4px, .8vh, 10px) 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 4px clamp(14px, 2vw, 32px);
+  font-size: clamp(1.1rem, min(1.8vw, 2.6vh), 2rem); font-weight: 700;
+}
+body.tv .tv-answers-teams:empty { display: none; }
+body.tv .tv-answers-teams li { overflow-wrap: anywhere; }
 /* špatná odpověď při bzučení (tv-buzz.js), otázka ještě běží: zeslabená, přeškrtnutá a s ✗ – čárkovaný rámec
    bez červené výplně ji odliší od odhalené špatné odpovědi (.answer.wrong) */
 body.tv .answer.tv-buzz-wrong { opacity: .5; border-style: dashed; border-color: var(--bad); }

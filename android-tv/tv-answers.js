@@ -2,6 +2,7 @@
 // (KvizTvGame.answers), hlídá odpočet, zavře příjem po vypršení limitu nebo po hlasu všech připojených hráčů s týmem
 // a za chvíli otázku sám odhalí voláním reveal() z app.js. Po odhalení kolo jednou vyhodnotí a týmům přičte body
 // přes addPoints z app.js. Při odchodu z otázky kolo zruší bez bodů.
+// Nad odpověďmi je pruh #tvAnswersBar: odpočet a počet odpovědí, po uzavření důvod, po odhalení hlasy a výsledek týmů.
 // Menu, dialog ani velké zobrazení týmů odpočet nezastaví (D5); odhalení jen počká na zavření dialogu, menu a emoji.
 // Vkládá se jen do APK (android-tv/prepare.mjs) jako poslední TV skript, za tv-buzz.js.
 // Rozhraní: .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md § 7 (tv-answers.js).
@@ -127,6 +128,7 @@
     limitTimer = null;
     if (!roundIsCurrent() || !answers.close("time")) return;
     Game.refresh();
+    renderBar();
     scheduleReveal();
   }
 
@@ -180,6 +182,7 @@
   }
 
   // Otázka je odhalená (automaticky, moderátorem nebo jinou cestou): příjem se zavře a kolo se jednou vyhodnotí.
+  // Návrat true znamená „kolo se změnilo“: Game.refresh() po vyhodnocení volá sync() podle toho, ne tahle funkce.
   function finishRevealed() {
     cancelTimers();
     const round = answers.round();
@@ -188,6 +191,103 @@
     evaluatedRound = round.round;
     onRevealed();
     return true;
+  }
+
+  /* ---------- Pruh odpočtu a výsledku ---------- */
+  const BAR_TICK_MS = 250;
+  const MS_PER_SECOND = 1000;
+  const CLOSE_TITLES = { time: "Čas vypršel", all: "Všichni odpověděli" };
+  let barTicker = null; // obnova odpočtu, běží jen ve stavu open
+
+  // Pruh je sourozenec těsně před #answers (app.js přestavuje jen děti #answers, pruh přežije).
+  function createBar() {
+    const bar = document.createElement("div");
+    bar.id = "tvAnswersBar";
+    bar.className = "tv-answers-bar";
+    bar.setAttribute("role", "status");
+    bar.setAttribute("aria-live", "polite");
+    bar.hidden = true;
+    const title = document.createElement("p");
+    title.className = "tv-answers-title";
+    const meta = document.createElement("p");
+    meta.className = "tv-answers-meta";
+    const progress = document.createElement("div");
+    progress.className = "tv-answers-progress";
+    const teams = document.createElement("ul");
+    teams.className = "tv-answers-teams";
+    bar.append(title, meta, progress, teams);
+    const list = $("answers");
+    if (list) list.before(bar);
+    else console.warn("tv-answers: chybí prvek #answers, pruh odpočtu se nezobrazí");
+    return { bar, title, meta, progress, teams };
+  }
+  const bar = createBar();
+
+  // Stav pruhu podle kola otázky na obrazovce; null = pruh se skrývá.
+  function barState() {
+    if (!playable() || !roundIsCurrent()) return null;
+    const status = answers.round().status;
+    if (status === "open" || status === "closed") return status;
+    return status === "result" && answers.result() !== null ? "result" : null;
+  }
+
+  function stopTicker() {
+    clearInterval(barTicker);
+    barTicker = null;
+  }
+
+  function renderOpen() {
+    const round = answers.round();
+    const msLeft = Math.max(round.deadlineAt - performance.now(), 0);
+    const seconds = Math.ceil(msLeft / MS_PER_SECOND);
+    bar.title.textContent = "Odpovídejte na mobilech";
+    bar.meta.textContent = "Zbývá " + seconds + " s · Odpovědělo " + round.count + " z " + expectedIds().length + " · OK = ukázat odpověď";
+    bar.progress.style.setProperty("--left", String(round.limitMs > 0 ? Math.min(msLeft / round.limitMs, 1) : 0));
+  }
+
+  function renderClosed() {
+    bar.title.textContent = CLOSE_TITLES[answers.round().closeReason] || "";
+    bar.meta.textContent = "Za chvíli ukážu správnou odpověď · OK = hned";
+  }
+
+  // Názvy týmů jsou cizí text: jen textContent.
+  function teamLine(res) {
+    const teams = appState().teams;
+    const team = Array.isArray(teams) ? teams[res.team] : null;
+    const label = team ? [team.emoji, team.name].filter(Boolean).join(" ") : "";
+    const answer = String(res.answer).toUpperCase();
+    const item = document.createElement("li");
+    item.textContent = label + ": " + answer + (res.correct ? " ✓ +" + res.points : " ✗");
+    return item;
+  }
+
+  function renderResult() {
+    const res = answers.result();
+    const v = res.votes;
+    bar.title.textContent = v.a + v.b + v.c === 0 ? "Nikdo neodpověděl" : "Hlasy: A " + v.a + " · B " + v.b + " · C " + v.c;
+    bar.meta.textContent = "";
+    bar.teams.replaceChildren(...res.teams.map(teamLine));
+  }
+
+  // Vyplní pruh podle kola; volá se po každém srovnání, změně herní vrstvy a každých 250 ms ve stavu open.
+  function renderBar() {
+    const kind = barState();
+    bar.bar.hidden = kind === null;
+    if (kind === null) {
+      stopTicker();
+      return;
+    }
+    bar.bar.dataset.state = kind;
+    bar.meta.hidden = kind === "result";
+    bar.teams.replaceChildren();
+    if (kind === "open") {
+      if (!barTicker) barTicker = setInterval(() => runSafely(renderBar, "při obnově odpočtu"), BAR_TICK_MS);
+      renderOpen();
+      return;
+    }
+    stopTicker();
+    if (kind === "closed") renderClosed();
+    else renderResult();
   }
 
   /* ---------- Srovnání kola s obrazovkou ---------- */
@@ -217,6 +317,7 @@
     runSafely(() => {
       const changed = playable() ? syncPlaying() : cancelRound();
       if (changed) Game.refresh();
+      renderBar();
     }, "při srovnání kola s obrazovkou");
   }
   function scheduleSync() {
@@ -227,14 +328,16 @@
   // Obal pick() z app.js (už obaleného v tv-remote.js a tv-buzz.js). V kole odpovědí moderátor za tým nevybírá:
   // OK ovladače, klik i A/B/C z mobilu ovladače jen ukážou správnou odpověď přes reveal(). Původní pick by
   // s jedním týmem v tv-remote.js přičetl bod podruhé a průběh v archivu by ukázal volbu moderátora jako odpověď týmu.
-  // Mimo kolo (jiný režim, archiv, otázka bez kola) volá původní funkci beze změny.
+  // Mimo kolo (jiný režim, archiv, otázka bez kola) volá původní funkci beze změny. V kole bez reveal() se neudělá nic,
+  // původní pick by bod přičetl podruhé.
   function wrapPick() {
     if (typeof pick !== "function" || typeof currentQ !== "function") return;
     const basePick = pick;
     window.pick = function () {
       const q = questionNow();
       const inRound = playable() && roundIsCurrent() && answers.running() && !!q && !q.revealed;
-      if (!inRound || typeof reveal !== "function") return basePick.apply(this, arguments);
+      if (!inRound) return basePick.apply(this, arguments);
+      if (typeof reveal !== "function") return undefined;
       reveal();
       sync(); // vyhodnocení a body hned, ne až po debounce
       return undefined;

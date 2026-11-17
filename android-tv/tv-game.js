@@ -1,6 +1,6 @@
 // TV nadstavba, herní režim s hráči: spojí zprávy hráčů z mobilního ovládání (tv-link.js) s herní logikou (game-core.js)
 // a každému hráči posílá jeho snímek. Sám nic nevykresluje; zapnutí hry nabízí lobby, kolo bzučáku řídí tv-buzz.js.
-// Vkládá se jen do APK (android-tv/prepare.mjs) jako poslední TV skript, za tv-link.js.
+// Vkládá se jen do APK (android-tv/prepare.mjs) za tv-link.js (posledním TV skriptem je tv-answers.js).
 // Rozhraní: kontrakt hráčů (.claude-work/2026-11-15-hraci-buzzer/kontrakt.md) § 4 (KvizGameCore), § 5 (KvizTvLink.players),
 // § 7 (KvizTvGame); režim odpovědí: .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md § 6 a § 7.
 //

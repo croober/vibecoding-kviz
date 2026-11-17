@@ -109,7 +109,7 @@ Karta ovladače stojí na zadání pod kartou hry (**Hrát s mobily – bzučák
 
 ## Hráči na mobilech a bzučák
 
-Hra s hráči je volitelná a vypnutá. Hráči se připojí svým mobilem (bez instalace), vyberou si přezdívku a tým a na otázku „bzučí“: televize vybere, kdo stiskl první, a ukáže, který tým odpovídá. Odpověď vybírá moderátor ovladačem na TV, mobil hráče nikdy nedostane otázku, odpovědi ani správnou odpověď. Dělá to TV vrstva (`game-core.js`, `tv-game.js`, `tv-lobby.js`, `tv-buzz.js`, stránka `mobile/player.*`), `public/` se nemění.
+Hra s hráči je volitelná a vypnutá. Hráči se připojí svým mobilem (bez instalace), vyberou si přezdívku a tým a na otázku „bzučí“: televize vybere, kdo stiskl první, a ukáže, který tým odpovídá. Odpověď vybírá moderátor ovladačem na TV, mobil hráče v režimu **Bzučák** (výchozí) nikdy nedostane otázku, odpovědi ani správnou odpověď. Výjimka je volitelný režim **Odpovědi na mobilu** (viz níže), kde hráč otázku a tři odpovědi dostane a správnou odpověď až po odhalení na TV. Dělá to TV vrstva (`game-core.js`, `answer-core.js`, `tv-game.js`, `tv-lobby.js`, `tv-buzz.js`, `tv-answers.js`, stránka `mobile/player.*`), `public/` se nemění.
 
 ### Připojení
 
@@ -154,12 +154,49 @@ Spojení mobilu s televizí je `ws://` a `http://`, **bez šifrování**, jen v 
 - Soupiska je jen v paměti TV. Po restartu aplikace se hráči zapíšou sami, jakmile se jejich mobil znovu připojí (stránka si pamatuje přezdívku a tým); kolo se nepamatuje.
 - Hráč smí **měnit tým jen mimo kvíz nebo po odhalení otázky** (mimo běžící kolo); jinak „Tým jde změnit až po téhle otázce“.
 - Kdo bzučel, se do archivu ani průběhu kvízu nezapisuje.
-- Odpovědi hráčů na mobilu (hráč sám volí A / B / C) zatím nejsou, je to plánovaná další etapa. Odpovídá vždy moderátor.
+- Odpovědi hráčů na mobilu (hráč sám volí A / B / C) jsou jen v režimu **Odpovědi na mobilu**, popis v další sekci. V režimu Bzučák odpovídá vždy moderátor.
 - Vyžaduje WebView ≥ Chrome 111: čištění přezdívky (`cleanName` v `game-core.js`) používá `toWellFormed()`, na starším WebView končí každý `join` chybou TypeError a nepřipojí se žádný hráč. Kosmetika: ztlumení přepínače v dialogu používá `:has()` (Chrome 105+), bez něj se přepínač jen nezešedí.
 
 ### Protokol hráče
 
-Stejný WebSocket jako ovladač (`/ws?t=<kód>`), verze protokolu `v: 1`, role `player` (ovladač `remote` s klíčem). Hráč smí poslat jen `hello` (role `player`, `clientId`, volitelně `resume`), `join` (`name` 1–16 znaků, `team` 0–3) a `buzz` (`q` index otázky ze snímku). Cokoli jiného televize odmítne (`forbidden`), omezení: 30 zpráv za sekundu na spojení (jinak se spojení zavře s důvodem `rate`). Důvody odmítnutí v `ack`: u `join` `invalid`, `full`, `locked`, `off`; u `buzz` `nojoin`, `closed`, `early`, `locked`, `late`, `off`. Televize hráči posílá jen `welcome`, `ack` (odpověď na `join` a `buzz`), `error` a snímek `state` s poli `rev`, `phase` (`off`, `lobby`, `wait`, `armed`, `answering`, `closed`), `me`, `teams`, `quiz` (jen pořadí otázky), `buzz` (`canBuzz`, `team`, `by`, `mine`, `teamLocked`, `result`). Přezdívky a názvy týmů jsou cizí text a zobrazují se jen jako text. Podrobné rozhraní: hlavičky `game-core.js`, `tv-game.js`, `mobile/player.js`.
+Stejný WebSocket jako ovladač (`/ws?t=<kód>`), verze protokolu `v: 1`, role `player` (ovladač `remote` s klíčem). Hráč smí poslat jen `hello` (role `player`, `clientId`, volitelně `resume`), `join` (`name` 1–16 znaků, `team` 0–3) a `buzz` (`q` index otázky ze snímku). Cokoli jiného televize odmítne (`forbidden`), omezení: 30 zpráv za sekundu na spojení (jinak se spojení zavře s důvodem `rate`). Důvody odmítnutí v `ack`: u `join` `invalid`, `full`, `locked`, `off`; u `buzz` `nojoin`, `closed`, `early`, `locked`, `late`, `off`. Televize hráči posílá jen `welcome`, `ack` (odpověď na `join` a `buzz`), `error` a snímek `state` s poli `rev`, `phase` (`off`, `lobby`, `wait`, `armed`, `answering`, `closed`), `me`, `teams`, `quiz` (jen pořadí otázky), `buzz` (`canBuzz`, `team`, `by`, `mine`, `teamLocked`, `result`). Přezdívky a názvy týmů jsou cizí text a zobrazují se jen jako text. Podrobné rozhraní: hlavičky `game-core.js`, `tv-game.js`, `mobile/player.js`. Zprávu `answer` a snímek režimu odpovědí popisuje následující sekce.
+
+## Odpovědi na mobilu
+
+Volitelný režim hry s hráči: každý hráč vybere na svém mobilu A, B nebo C a rychlá správná odpověď dá týmu víc bodů. Dělá to `answer-core.js` (čistá logika kola, testy `npm run test:tv`), `tv-answers.js` (řadič kola, poslední TV skript) a stránka `mobile/player.*`; `public/` se nemění.
+
+### Volba režimu
+
+V dialogu **Hráči na mobilech** je skupina **Režim hry**: **Bzučák** (výchozí, také pro starší uložené nastavení) nebo **Odpovědi na mobilu**. Volba se pamatuje (`localStorage` `kviz-tv-game-v1`, pole `mode`). Karta na zadání podle režimu mění nadpis („Hrát s mobily – bzučák“ / „Hrát s mobily – odpovědi“). Varování „Bzučák potřebuje aspoň 2 týmy.“ platí jen v režimu Bzučák; odpovědi potřebují aspoň 1 tým. **Změna režimu uprostřed kola kolo restartuje** (rozehrané hlasy se zahodí a kolo se případně otevře znovu podle nového režimu). Změna režimu nemění klíč ovladače ani QR.
+
+### Pravidla kola
+
+- **Otevření:** po zobrazení neodhalené otázky, když hra běží v režimu odpovědí, je aspoň 1 tým a aspoň 1 připojený hráč s týmem. Pruh pod odpovědmi ukáže „Odpovídejte na mobilech“, odpočet **30 s** a „Odpovědělo n z m“.
+- **Hlas:** každý hráč smí v kole odpovědět **jednou** (druhý pokus dostane `locked`). Hlas se nedá vzít zpět.
+- **Uzavření:** vypršel čas (titulek „Čas vypršel“) nebo odpověděli všichni připojení hráči s týmem („Všichni odpověděli“). Za 1,5 s se správná odpověď **odhalí sama**, pokud není otevřený dialog, menu ani výběr emoji (pak se počká na jejich zavření). **OK moderátora** během kola (i po uzavření) odhalí hned; v kole odpovědí moderátor za tým nevybírá, takže se bod nepřičte dvakrát (platí i s jedním týmem).
+- **Odpočet** menu, dialog ani velké zobrazení týmů nezastaví.
+- **Zamčený archiv:** archivní kvíz je jen ke čtení, kolo se nevede a hráči otázku nedostanou (jen čekací obrazovku).
+- **Změna týmu hráče** je během kola (otevřeném i uzavřeném) zamčená; mimo kolo jde jako dřív.
+
+### Bodování
+
+Odpověď týmu určí **většina hlasů jeho hráčů**; při shodě rozhodne dřívější hlas (podle času příjmu na TV). Správná odpověď dá týmu základ podle obtížnosti (`questionPoints()`, stejný jako u Jednoho týmu) plus bonus za rychlost: `základ + zaokrouhleno(základ × (30 − t) / 30)`, kde `t` jsou celé sekundy od zobrazení otázky mobilu k nejdřívějšímu hlasu pro zvolenou odpověď. Příklad se základem 1: do 15 s 2 body, od 16 s 1 bod; se základem 3: ihned 6, po 10 s 5, po 29 s 3. Špatná odpověď nebo žádný hlas = 0. Body se zapíšou **právě jednou po odhalení** přes `addPoints` jako běžné body týmu (událost `points` v průběhu kvízu), jen při zapnutém **Bod za správnou odpověď automaticky** a když se body počítají; odhalení je událost `reveal`.
+
+**Mobil čas neposílá.** Zpráva `answer` nese jen číslo kola a klíč. Čas měří TV z okamžiku příjmu (`rx`) vůči okamžiku, kdy odeslala snímek s otázkou, takže hodiny mobilů se neporovnávají.
+
+### Co hráč dostane a změněný invariant
+
+V režimu odpovědí hráč dostane text otázky, tři odpovědi a příznak, že otázka má obrázek; **správnou odpověď a rozložení hlasů až ve fázi výsledku** (po odhalení na TV). Nikdy nedostane vysvětlení, obrázek ani jeho zdroj, obtížnost, téma, volbu moderátora ani hlasy jednotlivců. **Obrázková otázka** se na mobilu ukáže jen s textem a poznámkou „Obrázek je na televizi“. Otázku pro hráče čte jen `tv-link.js` (`players.question()`, tvar určuje `KvizLinkCore.questionView`, text se krátí na 500 a odpověď na 200 znaků); `tv-game.js` dostane hotový filtrovaný objekt a snímek skládá `KvizAnswerCore.viewFor`. Režim Bzučák zůstává beze změny.
+
+### Protokol
+
+Hráč smí navíc poslat `answer` (`round` = číslo kola ze snímku `ask.round`, `key` = `a` / `b` / `c`, `seq`); jiná pole se zahodí. Důvody v `ack`: `nojoin`, `closed` (kolo není otevřené nebo vypršel čas), `late` (jiné kolo), `locked` (už odpověděl), `invalid`, `off` (hra vypnutá, jiný režim, odebraný hráč). `join` s žádostí o jiný tým během kola dostane `locked`. Snímek `state` má v režimu odpovědí navíc `mode: "answers"` a `ask` (`round`, `question`, `answers`, `image`, `limitMs`, `remainingMs`, `mine`, `answered`, `expected`, ve fázi `result` ještě `result` s `correct`, hlasy a výsledek týmu hráče); `phase` je `off`, `lobby`, `wait`, `answer`, `closed` nebo `result`. Verze protokolu zůstává `v: 1`. Na mobilu se hlasy zobrazí až ve výsledku, odpočet běží z `remainingMs`.
+
+### Omezení
+
+- **Víc klientů jedné osoby = víc hlasů.** Hráče televize pozná podle `clientId`, který si volí mobil, takže kdo se připojí dvěma mobily (nebo smaže data stránky), hlasuje dvakrát. Model důvěry je stejný jako u bzučáku; tlačítko **Odebrat** existuje.
+- Hlasy a kolo se nepamatují po restartu aplikace.
+- Vyžaduje WebView ≥ Chrome 111 (stejně jako hra s hráči).
 
 ## Kontrolní seznam ručního testu na TV
 
@@ -218,6 +255,16 @@ Stejný WebSocket jako ovladač (`/ws?t=<kód>`), verze protokolu `v: 1`, role `
 - [ ] Hráči: změna týmů na TV při připojených hráčích (odebrání týmu, jiné pořadí) hráče nenechá v cizím týmu, hráč bez týmu si vybere znovu.
 - [ ] Hráči: Odebrat hráče vyžádá potvrzení a hráč se po pokusu o návrat na stránku do hry nedostane (do vypnutí a zapnutí hry).
 - [ ] Hráči: archivní kvíz bzučák nemá (tlačítka hráčů nejsou aktivní); s jedním týmem je bzučák vypnutý a bod se přičte jako dřív.
+- [ ] Odpovědi: v dialogu Hráči na mobilech je skupina Režim hry (výchozí Bzučák), jde přepnout šipkami a OK a volba přežije restart aplikace; karta na zadání změní nadpis na „Hrát s mobily – odpovědi“.
+- [ ] Odpovědi: tři mobily odpovídají A / B / C, na TV pod odpověďmi běží pruh s odpočtem 30 s a „Odpovědělo n z m“, na mobilech se odpočet shoduje s TV.
+- [ ] Odpovědi: když odpoví všichni, kolo se uzavře („Všichni odpověděli“) a po chvíli se správná odpověď odhalí sama; po vypršení času totéž s „Čas vypršel“.
+- [ ] Odpovědi: body týmu odpovídají pravidlům (většina hlasů týmu, základ podle obtížnosti plus bonus za rychlost) a přičtou se právě jednou; špatná odpověď bodů nedá.
+- [ ] Odpovědi: OK moderátora během kola odhalí odpověď hned a body se nepřičtou dvakrát, i s jedním týmem.
+- [ ] Odpovědi: obrázková otázka je na mobilu jen jako text s poznámkou „Obrázek je na televizi“, na TV je obrázek vidět a pruh s výsledkem pod odpověďmi ho nezakrývá (ani při velkém písmu a 12 hráčích).
+- [ ] Odpovědi: po odhalení ukáže mobil správnou odpověď, vlastní odpověď a výsledek týmu; po zhasnutí a probuzení mobilu hráč uvidí svou odpověď beze ztráty.
+- [ ] Odpovědi: pruh s výsledkem (hlasy A / B / C, týmy s body) a texty jsou čitelné z gauče při výchozí i zvětšené velikosti rozhraní, s 12 hráči ve 4 týmech se vejdou.
+- [ ] Odpovědi: změna režimu uprostřed kola kolo restartuje (hlasy se zahodí); druhý mobil téhož hráče hlasuje samostatně, **Odebrat** ho odpojí.
+- [ ] Odpovědi: archiv ukáže „Ukázána správná odpověď“ a přičtené body v průběhu; archivní kvíz mobilům otázku neposílá.
 
 ## Ladění
 
@@ -232,3 +279,5 @@ Emulátor: AVD s Android TV rozlišením 1920×1080, hustota 320 dpi, `hw.dPad=y
 `android-tv/tv-link.js` (most mezi pluginem `KvizLink`, mobilní stránkou a ovládáním TV) navíc spoléhá na globály `state` (`view`, `bigTeams`, `locked`, `teams`, `quiz.questions`, `index`), `currentQ`, `closeMenu`, `confirmDialog` a na prvky `#topic`, `#teams`, `#answers` (`.answer`), `#menuPanel`, `#emojiPicker`, `#main`, `#menuBtn`, `dialog[open]`, `body[data-view]`. Z TV vrstvy potřebuje `KvizTv.store` (`tv-server.js`), `KvizTvCore` (`core.js`), `KvizLinkCore` (`link-core.js`), `KvizTvRemote.handleBack` a `isField` (`tv-remote.js`), `#tvSettingsDialog` s `#tvSettingsForm`, `#menuTvKeys`, `#tvReplay` a globál `qrcode` (`vendor/qrcode.js`). Úplný seznam je v hlavičce souboru, při změně těchto věcí ho zkontrolovat.
 
 `android-tv/tv-buzz.js` obaluje `pick` (podruhé, po obalu z `tv-remote.js`: špatná odpověď při bzučení otázku neodhalí) a čte z `app.js` jen `state` (`view`, `index`, `locked`, `bigTeams`, `quiz`, `teams`), `currentQ` (`revealed`, `picked`, `correct`), `addPoints`, `questionPoints`, `scoringActive` a prvky `#answers` (`.answer` v pořadí a, b, c), `#teams` (karty v pořadí týmů), `#menuPanel`, `#emojiPicker`, `dialog[open]` a `body[data-view]`. `tv-game.js` sleduje `#teams`, `#answers` a `body[data-view]`; `tv-lobby.js` potřebuje `state.teams`, `confirmDialog`, `closeMenu`, `#menuBtn` a `#menuPanel`. Při změně těchto věcí v `app.js` zkontrolovat i je. Zpět při bzučení řeší `tv-remote.js` voláním `KvizTvBuzz.onBack`.
+
+`android-tv/tv-answers.js` (kolo odpovědí, poslední TV skript) obaluje `pick` jako nejvnější, po `tv-buzz.js`: v běžícím kole odpovědí místo výběru zavolá `reveal`. Čte z `app.js` `state` (`view`, `index`, `locked`, `quiz`, `teams`), `currentQ` (`revealed`, `correct`), `reveal`, `addPoints`, `questionPoints`, `scoringActive` a prvky `#answers`, `#menuPanel`, `#emojiPicker`, `dialog[open]` a `body[data-view]`; z TV vrstvy `KvizTvGame`, `KvizAnswerCore` a `KvizTv`. Při změně těchto věcí v `app.js` ho zkontrolovat.

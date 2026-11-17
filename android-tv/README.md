@@ -16,10 +16,12 @@ Skripty a styly, které `npm run android:prepare` vkládá do APK (`www-android/
 | `tv-game.js` | řadič hry s hráči: zprávy hráčů, nastavení, snímky hráčům |
 | `tv-lobby.js` | dialog Hráči na mobilech (zapnutí hry, QR pro hráče, soupiska, Odebrat) a karta Hrát s mobily – bzučák na zadání (zapnutí, QR pro hráče, přezdívky) |
 | `tv-buzz.js` | kolo bzučáku (odjištění, pruh „Odpovídá“, druhá šance, automatický bod) a obal `pick` |
+| `answer-core.js` (`answer-core.test.js`) | čistá logika kola odpovědí na mobilu (hlasy, týmová většina, body s bonusem za rychlost, snímek hráče), testy `npm run test:tv` |
+| `tv-answers.js` | kolo odpovědí na mobilu (odpočet 30 s, uzavření, automatické odhalení, pruh s výsledkem, zápis bodů) a obal `pick`; poslední TV skript |
 | `mobile/` | mobilní stránky, servíruje je TV: ovladač (`index.html`, `mobile.css`, `mobile.js`) a stránka hráče (`player.html`, `player.css`, `player.js`) |
 | `tv.css` | styly TV vrstvy |
 | `prepare.mjs` | kopíruje `public/`, vkládá skripty a knihovnu QR (`vendor/qrcode.js` z `qrcode-generator`) |
 
-Nativní plugin `KvizLink` je v `android/app/src/main/java/cz/croober/kviz/link/`. Postup připojení mobilu, síťové požadavky a ladění: sekce [Ovládání z mobilu](../docs/ANDROID.md#ovládání-z-mobilu). Hra s hráči a bzučák (pravidla, QR kódy, bezpečnost sítě, odebrání hráče): [Hráči na mobilech a bzučák](../docs/ANDROID.md#hráči-na-mobilech-a-bzučák).
+Nativní plugin `KvizLink` je v `android/app/src/main/java/cz/croober/kviz/link/`. Postup připojení mobilu, síťové požadavky a ladění: sekce [Ovládání z mobilu](../docs/ANDROID.md#ovládání-z-mobilu). Odpovědi hráčů na mobilu: [Odpovědi na mobilu](../docs/ANDROID.md#odpovědi-na-mobilu). Hra s hráči a bzučák (pravidla, QR kódy, bezpečnost sítě, odebrání hráče): [Hráči na mobilech a bzučák](../docs/ANDROID.md#hráči-na-mobilech-a-bzučák).
 
 `tv-config.json` (adresa serveru, token, basic auth) je mimo git, vzor je `tv-config.example.json`.

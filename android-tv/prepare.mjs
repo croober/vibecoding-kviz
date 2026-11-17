@@ -55,7 +55,7 @@ cpSync(join(qrDir, qrMain), join(out, "vendor", "qrcode.js"));
 
 // TV nadstavba a konfigurace (tv-config.json je mimo git, viz tv-config.example.json)
 // TV nadstavba: skripty se vkládají v tomto pořadí za app.js (core.js je čistá logika bez DOM)
-const TV_SCRIPTS = ["core.js", "link-core.js", "game-core.js", "answer-core.js", "tv-server.js", "tv-sound.js", "tv-keys.js", "tv-remote.js", "tv-setup.js", "tv-link.js", "tv-game.js", "tv-lobby.js", "tv-buzz.js"];
+const TV_SCRIPTS = ["core.js", "link-core.js", "game-core.js", "answer-core.js", "tv-server.js", "tv-sound.js", "tv-keys.js", "tv-remote.js", "tv-setup.js", "tv-link.js", "tv-game.js", "tv-lobby.js", "tv-buzz.js", "tv-answers.js"];
 for (const f of [...TV_SCRIPTS, "tv.css"]) cpSync(join(root, "android-tv", f), join(out, f));
 const cfgPath = join(root, "android-tv", "tv-config.json");
 const cfg = existsSync(cfgPath) ? JSON.parse(readFileSync(cfgPath, "utf8")) : {};

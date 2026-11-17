@@ -3,7 +3,8 @@
 // třídou tv-buzz na kartě týmu a zvukem; Zpět ovladače při bzučení tým uvolní (KvizTvBuzz.onBack z tv-remote.js).
 // Výběr odpovědi při bzučení (obal pick): špatná odpověď, když může odpovídat jiný tým, otázku neodhalí – jen ji označí
 // (tv-buzz-wrong) a tým zamkne; správná odpověď přičte bzučícímu týmu body sama (KvizTvGame.settings().autoPoints).
-// Vkládá se jen do APK (android-tv/prepare.mjs) jako poslední TV skript, za tv-lobby.js (obal pick je až po tv-remote.js).
+// Vkládá se jen do APK (android-tv/prepare.mjs) za tv-lobby.js a před tv-answers.js (obal pick je až po tv-remote.js).
+// V režimu odpovědí na mobilech (KvizTvGame.settings().mode === "answers") se kolo bzučáku neotevírá.
 // Rozhraní: kontrakt hráčů (.claude-work/2026-11-15-hraci-buzzer/kontrakt.md) § 4 (Kolo, TIMING), § 7 (KvizTvBuzz).
 //
 // Pravidla kola (stisky, zámky týmů, tresty, pořadí) jsou jen v KvizGameCore; tady se jen rozhoduje, kdy je zavolat.
@@ -43,7 +44,9 @@
   /* ---------- Stav obrazovky ---------- */
   function playable() {
     const s = appState();
-    return Game.settings().enabled && s.view === "quiz" && !s.locked && !!questionNow();
+    const settings = Game.settings();
+    // V režimu odpovědí na mobilech řídí kolo tv-answers.js a bzučák se neotevírá.
+    return settings.enabled && settings.mode !== "answers" && s.view === "quiz" && !s.locked && !!questionNow();
   }
 
   const isShown = (id) => {

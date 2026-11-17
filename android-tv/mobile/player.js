@@ -371,24 +371,27 @@
     }
   }
 
-  const keyLabel = (key) => key.toUpperCase();
+  // Klíč odpovědi v protokolu (a/b/c) se hráči ukazuje jako číslo 1/2/3.
+  const keyLabel = (key) => String("abc".indexOf(key) + 1);
 
   function pointsText(n) {
+    if (n === 0) return "0 bodů";
     if (n === 1) return "+1 bod";
     if (n >= 2 && n <= 4) return `+${n} body`;
     return `+${n} bodů`;
   }
 
-  function teamResultText(team) {
+  // Tlačítka už ukazují správnou odpověď a hráčovu volbu, text proto neopakuje, co je z nich vidět.
+  function teamResultText(team, mine) {
     if (!team) return TEXT_TEAM_NO_ANSWER;
-    const label = keyLabel(team.answer);
-    return team.correct ? `Tvůj tým: ${label} ✓ · ${pointsText(team.points)}` : `Tvůj tým: ${label} ✗ · 0 bodů`;
+    const points = pointsText(team.correct ? team.points : 0);
+    return team.answer === mine ? `Tvůj tým: ${points}` : `Tvůj tým zvolil ${keyLabel(team.answer)} · ${points}`;
   }
 
   function askTexts(state, s) {
     if (state === "chosen") return { title: `Odpověď ${keyLabel(s.ask.mine)} je odeslaná`, sub: TEXT_CHOSEN_SUB };
     const [title, sub] = ASK_TEXT[state];
-    return { title, sub: RESULT_STATES.has(state) ? teamResultText(s.ask.result.team) : sub };
+    return { title, sub: RESULT_STATES.has(state) ? teamResultText(s.ask.result.team, s.ask.mine) : sub };
   }
 
   // --- místní odpočet (jen zobrazení; konec kola určuje televize) ---
@@ -591,9 +594,6 @@
       btn.classList.toggle("wrong", state === "wrong" && key === ask.mine);
       btn.setAttribute("aria-pressed", String(key === own));
       btn.disabled = !enabled;
-      const votes = btn.querySelector(".ask-votes");
-      votes.hidden = !result;
-      votes.textContent = result ? `${result.votes[key]}×` : "";
     }
   }
 

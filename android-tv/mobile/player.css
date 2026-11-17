@@ -113,8 +113,7 @@
 #game:not([data-mode="answers"]) #ask,
 #game[data-mode="answers"] #buzz-area,
 .ask[hidden],
-.ask-image[hidden],
-.ask-votes[hidden] { display: none; }
+.ask-image[hidden] { display: none; }
 
 /* Odpovědi na mobilu: obsah se zalamuje a stránka se posouvá, nic se neřeže */
 .ask { display: flex; flex-direction: column; gap: 14px; margin-block: 8px; }
@@ -149,7 +148,6 @@
   background: var(--accent-soft); color: var(--accent); font-family: var(--display); font-weight: 800; font-size: 1.15rem;
 }
 .ask-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.ask-votes { flex: none; color: var(--muted); font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ask-answer::after { flex: none; font-size: 1.4rem; font-weight: 800; }
 
 .ask-answer:disabled { cursor: default; opacity: .6; }

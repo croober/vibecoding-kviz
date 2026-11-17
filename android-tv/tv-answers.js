@@ -250,12 +250,15 @@
     bar.meta.textContent = "Za chvíli ukážu správnou odpověď · OK = hned";
   }
 
+  // Klíč odpovědi v protokolu (a/b/c) se na obrazovce ukazuje jako číslo 1/2/3.
+  const answerNumber = (key) => String("abc".indexOf(key) + 1);
+
   // Názvy týmů jsou cizí text: jen textContent.
   function teamLine(res) {
     const teams = appState().teams;
     const team = Array.isArray(teams) ? teams[res.team] : null;
     const label = team ? [team.emoji, team.name].filter(Boolean).join(" ") : "";
-    const answer = String(res.answer).toUpperCase();
+    const answer = answerNumber(res.answer);
     const item = document.createElement("li");
     item.textContent = label + ": " + answer + (res.correct ? " ✓ +" + res.points : " ✗");
     return item;
@@ -264,7 +267,9 @@
   function renderResult() {
     const res = answers.result();
     const v = res.votes;
-    bar.title.textContent = v.a + v.b + v.c === 0 ? "Nikdo neodpověděl" : "Hlasy: A " + v.a + " · B " + v.b + " · C " + v.c;
+    const nobody = v.a + v.b + v.c === 0;
+    bar.title.textContent = nobody ? "Nikdo neodpověděl" : "";
+    bar.title.hidden = !nobody;
     bar.meta.textContent = "";
     bar.teams.replaceChildren(...res.teams.map(teamLine));
   }
@@ -278,6 +283,7 @@
       return;
     }
     bar.bar.dataset.state = kind;
+    bar.title.hidden = false;
     bar.meta.hidden = kind === "result";
     bar.teams.replaceChildren();
     if (kind === "open") {

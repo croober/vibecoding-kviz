@@ -60,7 +60,7 @@
       </label>
       <label class="tv-game-mode-opt">
         <input type="radio" name="tvGameMode" value="answers">
-        <span class="tv-game-mode-box"><i class="ph ph-check-circle" aria-hidden="true"></i><span>Odpovědi na mobilu – každý vybere A, B nebo C, rychlost přidá body</span></span>
+        <span class="tv-game-mode-box"><i class="ph ph-check-circle" aria-hidden="true"></i><span>Odpovědi na mobilu – každý vybere 1, 2 nebo 3, rychlost přidá body</span></span>
       </label>
     </div>
     <p class="tv-game-warn" id="tvGameWarn" role="note" hidden><i class="ph ph-warning" aria-hidden="true"></i><span>Bzučák potřebuje aspoň 2 týmy.</span></p>

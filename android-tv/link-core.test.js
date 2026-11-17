@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import "./core.js";
 import "./link-core.js";
 
-const { PROTOCOL, LIMITS, REMOTE_KEY_LENGTH, allowedFor, newRemoteKey, buildPlayerUrl, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, createRateLimiter, fieldView, stateView, sameState, PLAYER_STATE_KEYS, playerStateView } = globalThis.KvizLinkCore;
+const { PROTOCOL, LIMITS, REMOTE_KEY_LENGTH, allowedFor, newRemoteKey, buildPlayerUrl, TOKEN_ALPHABET, REMOTE_ACTIONS, parseMessage, commandOf, newToken, buildUrl, pickAddress, createClients, createRateLimiter, fieldView, stateView, sameState, PLAYER_STATE_KEYS, playerStateView, ANSWER_KEYS, questionView } = globalThis.KvizLinkCore;
 
 const parse = (obj) => parseMessage(JSON.stringify({ v: PROTOCOL, ...obj }));
 const BAD = { ok: false, code: "bad_message" };
@@ -638,9 +638,9 @@ test("clients.list: pinned je jediné nové pole a je boolean", () => {
 
 test("allowedFor: co smí která role poslat", () => {
   for (const t of ["key", "text", "hello"]) assert.equal(allowedFor("remote", t), true, "remote " + t);
-  for (const t of ["join", "buzz", "hello"]) assert.equal(allowedFor("player", t), true, "player " + t);
+  for (const t of ["join", "buzz", "answer", "hello"]) assert.equal(allowedFor("player", t), true, "player " + t);
   const denied = [
-    ["player", "key"], ["player", "text"], ["remote", "join"], ["remote", "buzz"],
+    ["player", "key"], ["player", "text"], ["remote", "join"], ["remote", "buzz"], ["remote", "answer"],
     ["admin", "hello"], ["constructor", "hello"], ["__proto__", "key"], [undefined, "hello"],
     ["remote", "intent"], ["player", "toString"], ["remote", undefined], ["player", undefined]
   ];
@@ -728,7 +728,7 @@ test("sameState: ignoruje rev, pozná změnu v hloubce", () => {
 
 test("playerStateView: propustí jen povolené klíče a vrátí nový objekt", () => {
   const input = {
-    rev: 2, phase: "open", me: { name: "Eva" }, teams: [], quiz: { index: 1 }, buzz: null,
+    rev: 2, phase: "open", me: { name: "Eva" }, teams: [], quiz: { index: 1 }, buzz: null, mode: "answers", ask: null,
     correct: "a", answers: ["x"], remoteKey: "k2m4p6r8t9wx", t: "state"
   };
   const out = playerStateView(input);
@@ -744,6 +744,98 @@ test("playerStateView: chybějící klíče se nedoplňují, neplatný vstup vra
   assert.equal(playerStateView(null), null);
   assert.equal(playerStateView([]), null);
   assert.equal(playerStateView("state"), null);
+});
+
+test("playerStateView: propustí mode a ask, correct a remoteKey na nejvyšší úrovni zahodí", () => {
+  const ask = { round: 3, question: { question: "Q", answers: { a: "1", b: "2", c: "3" }, image: false, correct: null } };
+  const out = playerStateView({ phase: "open", mode: "answers", ask, correct: "b", remoteKey: "k2m4p6r8t9wx" });
+  assert.deepEqual(out, { phase: "open", mode: "answers", ask });
+  assert.ok(!("correct" in out) && !("remoteKey" in out));
+});
+
+// --- zpráva answer a otázka pro hráče ---
+
+test("parseMessage: answer projde a nese jen známá pole", () => {
+  assert.deepEqual(ANSWER_KEYS, ["a", "b", "c"]);
+  assert.deepEqual(parse({ t: "answer", round: 3, key: "b", seq: 5 }),
+    { ok: true, msg: { v: 1, t: "answer", round: 3, key: "b", seq: 5 } });
+  const r = parse({ t: "answer", round: 3, key: "b", seq: 5, elapsed: 12, rx: 99, q: 4, role: "remote", correct: "a" });
+  assert.deepEqual(r, { ok: true, msg: { v: 1, t: "answer", round: 3, key: "b", seq: 5 } });
+  assert.deepEqual(parse({ t: "answer", round: 0, key: "a", seq: 0 }).msg.round, 0);
+});
+
+test("parseMessage: answer s neplatnými poli vrací bad_message", () => {
+  const ok = { t: "answer", round: 3, key: "b", seq: 5 };
+  const bad = [
+    { round: -1 }, { round: 1.5 }, { round: "3" }, { round: undefined }, { round: null },
+    { key: "d" }, { key: "A" }, { key: 1 }, { key: undefined }, { key: "" }, { key: ["a"] },
+    { seq: undefined }, { seq: -1 }, { seq: "5" }
+  ];
+  for (const over of bad) assert.deepEqual(parse({ ...ok, ...over }), BAD, JSON.stringify(over));
+});
+
+const SECRET_QUESTION = () => ({
+  question: "Které město je hlavní?", answers: { a: "Praha", b: "Brno", c: "Ostrava" },
+  correct: "a", explanation: "TAJNE-VYSVETLENI", picked: "c", difficulty: "TAJNA-OBTIZNOST", topic: "TAJNE-TEMA",
+  image: { src: "/api/img?u=TAJNY-SRC", page: "https://cs.wikipedia.org/wiki/TAJNA-STRANKA", credit: "TAJNY-AUTOR" }
+});
+
+test("questionView: neodhalená otázka nepustí správnou odpověď, vysvětlení ani údaje o obrázku", () => {
+  const input = SECRET_QUESTION();
+  const out = questionView(input);
+  assert.deepEqual(Object.keys(out).sort(), ["answers", "correct", "image", "question"]);
+  assert.deepEqual(out, {
+    question: "Které město je hlavní?", answers: { a: "Praha", b: "Brno", c: "Ostrava" }, image: true, correct: null
+  });
+  assert.deepEqual(Object.keys(out.answers), ["a", "b", "c"]);
+  assert.notEqual(out.answers, input.answers);
+  const json = JSON.stringify(out);
+  for (const leak of ["TAJNE-VYSVETLENI", "TAJNY-SRC", "TAJNA-STRANKA", "TAJNY-AUTOR", "TAJNA-OBTIZNOST", "TAJNE-TEMA", "picked", "explanation"]) {
+    assert.ok(!json.includes(leak), leak);
+  }
+});
+
+test("questionView: správná odpověď až při revealed === true a platném klíči", () => {
+  assert.equal(questionView({ ...SECRET_QUESTION(), revealed: true }).correct, "a");
+  assert.equal(questionView({ ...SECRET_QUESTION(), revealed: true, correct: "c" }).correct, "c");
+  for (const revealed of ["true", 1, {}, false, undefined]) {
+    assert.equal(questionView({ ...SECRET_QUESTION(), revealed }).correct, null, String(revealed));
+  }
+  for (const correct of ["x", "A", 0, null, ["a"]]) {
+    assert.equal(questionView({ ...SECRET_QUESTION(), revealed: true, correct }).correct, null, String(correct));
+  }
+  const revealed = JSON.stringify(questionView({ ...SECRET_QUESTION(), revealed: true }));
+  for (const leak of ["TAJNE-VYSVETLENI", "TAJNY-SRC", "TAJNA-STRANKA", "TAJNY-AUTOR"]) assert.ok(!revealed.includes(leak), leak);
+});
+
+test("questionView: image je jen boolean", () => {
+  const base = SECRET_QUESTION();
+  assert.equal(questionView({ ...base, image: undefined }).image, false);
+  assert.equal(questionView({ ...base, image: "/api/img?u=x" }).image, false);
+  assert.equal(questionView({ ...base, image: null }).image, false);
+  assert.equal(questionView(base).image, true);
+});
+
+test("questionView: zkracování v kódových bodech a ne-řetězcové odpovědi", () => {
+  const out = questionView({ question: "q".repeat(600), answers: { a: "x".repeat(250), b: 42, c: null } });
+  assert.equal(out.question.length, LIMITS.question);
+  assert.equal(out.answers.a.length, LIMITS.answer);
+  assert.equal(out.answers.b, "");
+  assert.equal(out.answers.c, "");
+  // Emoji (2 kódové jednotky UTF-16) na hranici se nerozpůlí.
+  const emoji = questionView({ question: "q".repeat(499) + "😀😀", answers: { a: "x".repeat(199) + "😀😀" } });
+  assert.equal(Array.from(emoji.question).length, LIMITS.question);
+  assert.ok(emoji.question.endsWith("😀"));
+  assert.ok(emoji.answers.a.endsWith("😀"));
+  assert.ok(!/[\uD800-\uDBFF]$/.test(emoji.question) && !/[\uD800-\uDBFF]$/.test(emoji.answers.a));
+  assert.equal(questionView({ question: "😀".repeat(600), answers: {} }).question, "😀".repeat(500));
+});
+
+test("questionView: neplatný vstup vrací null", () => {
+  for (const q of [null, undefined, [], "otázka", 5, {}, { question: "Q" }, { answers: { a: "1" } },
+    { question: 5, answers: {} }, { question: "Q", answers: ["1", "2", "3"] }, { question: "Q", answers: "abc" }]) {
+    assert.equal(questionView(q), null, JSON.stringify(q));
+  }
 });
 
 test("clients.forget: odpojený i připojený klient zmizí a stejné clientId se zakládá znovu", () => {

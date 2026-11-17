@@ -1,18 +1,20 @@
 // Čistá logika mobilního ovládání bez závislosti na DOM (jde otestovat v Node: link-core.test.js).
 // Vystaví se vždy jako root.KvizLinkCore (kořenový package.json má "type": "module", takže bez require/module.exports).
-// Čte KvizTvCore.ACTIONS z core.js, proto se core.js musí načíst dřív. Rozhraní: kontrakt mobilního ovládání § 2 a § 4.
+// Čte KvizTvCore.ACTIONS z core.js, proto se core.js musí načíst dřív. Rozhraní: kontrakt mobilního ovládání § 2 a § 4,
+// zpráva answer a filtr otázky pro hráče: .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md § 3.
 (function (root) {
   "use strict";
 
   var PROTOCOL = 1;
-  var LIMITS = { text: 500, name: 16, message: 4096, players: 12, remoteKey: 64 };
+  var LIMITS = { text: 500, name: 16, message: 4096, players: 12, remoteKey: 64, question: 500, answer: 200 };
   var CLIENT_ID_LENGTH = { min: 8, max: 32 };
   var TOKEN_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
   var TOKEN_LENGTH = 6;
-  var TYPES = ["hello", "key", "text", "join", "buzz"];
+  var TYPES = ["hello", "key", "text", "join", "buzz", "answer"];
   var ROLES = ["remote", "player"];
   var REMOTE_KEY_LENGTH = 12;
   var RESUME_LENGTH = 16;
+  var ANSWER_KEYS = ["a", "b", "c"];
   var MAX_TEAMS = 4;
   var VIEWS = ["setup", "loading", "quiz", "results", "archive"];
   var OVERLAYS = ["dialog", "menu", "emoji"];
@@ -79,7 +81,13 @@
     return { v: PROTOCOL, t: "buzz", q: m.q, seq: m.seq };
   }
 
-  var READERS = { hello: readHello, key: readKey, text: readText, join: readJoin, buzz: readBuzz };
+  function readAnswer(m) {
+    if (!isSeq(m.round) || !isSeq(m.seq)) return null;
+    if (typeof m.key !== "string" || ANSWER_KEYS.indexOf(m.key) < 0) return null;
+    return { v: PROTOCOL, t: "answer", round: m.round, key: m.key, seq: m.seq };
+  }
+
+  var READERS = { hello: readHello, key: readKey, text: readText, join: readJoin, buzz: readBuzz, answer: readAnswer };
 
   // Validace zprávy z mobilu (nedůvěryhodný vstup). Nikdy nevyhazuje výjimku.
   function parseMessage(raw) {
@@ -187,7 +195,7 @@
   }
 
   // Které zprávy smí role poslat (kontrakt hráčů § 3). `hello` smí každá známá role.
-  var PERMISSIONS = { remote: ["key", "text"], player: ["join", "buzz"] };
+  var PERMISSIONS = { remote: ["key", "text"], player: ["join", "buzz", "answer"] };
 
   function allowedFor(role, type) {
     if (typeof role !== "string" || !Object.prototype.hasOwnProperty.call(PERMISSIONS, role)) return false;
@@ -369,6 +377,29 @@
     };
   }
 
+  // Zkrácení na `max` kódových bodů, aby se emoji (dvojice UTF-16) nerozpůlilo; ne-řetězec → "".
+  function clipText(value, max) {
+    return typeof value === "string" ? Array.from(value).slice(0, max).join("") : "";
+  }
+
+  // Otázka pro mobil hráče (kontrakt § 3): pole se skládají výslovně, vstup se nekopíruje.
+  // Správná odpověď jde ven až po odhalení na TV – dřív by ji hráč viděl v datech a mohl podvádět.
+  // Obrázek jen jako příznak: src, page i credit (název souboru, autor) prozrazují odpověď.
+  function questionView(q) {
+    if (!isPlainObject(q) || typeof q.question !== "string" || !isPlainObject(q.answers)) return null;
+    var revealedCorrect = q.revealed === true && ANSWER_KEYS.indexOf(q.correct) >= 0;
+    return {
+      question: clipText(q.question, LIMITS.question),
+      answers: {
+        a: clipText(q.answers.a, LIMITS.answer),
+        b: clipText(q.answers.b, LIMITS.answer),
+        c: clipText(q.answers.c, LIMITS.answer)
+      },
+      image: isPlainObject(q.image),
+      correct: revealedCorrect ? q.correct : null
+    };
+  }
+
   function toCount(n, max) {
     return Number.isSafeInteger(n) ? Math.max(0, Math.min(max, n)) : 0;
   }
@@ -393,8 +424,9 @@
     return view;
   }
 
-  // Jediné klíče, které smí nést snímek hráče (kontrakt § 7). Pojistka navíc: tvar hodnot určuje herní vrstva.
-  var PLAYER_STATE_KEYS = ["rev", "phase", "me", "teams", "quiz", "buzz"];
+  // Jediné klíče, které smí nést snímek hráče (kontrakt hráčů § 7; `mode` a `ask` pro režim odpovědí: kontrakt
+  // odpovědí § 3 a § 6). Pojistka navíc: tvar hodnot určuje herní vrstva, otázku filtruje questionView.
+  var PLAYER_STATE_KEYS = ["rev", "phase", "me", "teams", "quiz", "buzz", "mode", "ask"];
 
   // Nový objekt jen s povolenými klíči, které vstup má; vstup, který není prostý objekt, → null.
   function playerStateView(view) {
@@ -428,6 +460,6 @@
     PROTOCOL: PROTOCOL, LIMITS: LIMITS, ROLES: ROLES, REMOTE_KEY_LENGTH: REMOTE_KEY_LENGTH, TOKEN_ALPHABET: TOKEN_ALPHABET, REMOTE_ACTIONS: REMOTE_ACTIONS,
     parseMessage: parseMessage, commandOf: commandOf, newToken: newToken, newRemoteKey: newRemoteKey, buildUrl: buildUrl, buildPlayerUrl: buildPlayerUrl, pickAddress: pickAddress,
     allowedFor: allowedFor, createClients: createClients, createRateLimiter: createRateLimiter, fieldView: fieldView, stateView: stateView, sameState: sameState,
-    PLAYER_STATE_KEYS: PLAYER_STATE_KEYS, playerStateView: playerStateView
+    PLAYER_STATE_KEYS: PLAYER_STATE_KEYS, playerStateView: playerStateView, ANSWER_KEYS: ANSWER_KEYS, questionView: questionView
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -6,7 +6,7 @@
 //
 // Bezpečnost (kontrakt hráčů § 1 a § 5):
 //   - Role remote (ovladač) se přihlásí jen s klíčem ovladače settings.remoteKey (12 znaků, je jen v QR kódu,
-//     nikdy v konzoli); role player (hráč) smí jen join a buzz. O roli rozhoduje
+//     nikdy v konzoli); role player (hráč) smí jen join, buzz a answer. O roli rozhoduje
 //     KvizLinkCore.allowedFor před každou cestou k onKey a onText.
 //   - Na plátně je klíč jen uvnitř QR kódu (dialog i karta na zadání). Textová adresa s klíčem se ukáže jen v dialogu,
 //     když se QR nepodařilo vykreslit (otevírá ho moderátor vědomě); karta na zadání se bez QR neukáže vůbec.
@@ -21,9 +21,14 @@
 //     z vyjmenovaných polí – z otázky jen příznak revealed, z týmu jen name, emoji, color (žádné body).
 //     Hráči jde jen zpráva state a jen s klíči z KvizLinkCore.PLAYER_STATE_KEYS (totéž platí pro snímek ve welcome);
 //     players.forget(clientId) hráče zapomene (připojenému zavře spojení, ovladač se nikdy neodstraní).
+//   - players.question() je jediné čtení otázky pro hráče (kontrakt odpovědí,
+//     .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md § 1 a § 5): jen přes filtr KvizLinkCore.questionView,
+//     správnou odpověď (correct) vrací jen po odhalení, mimo běžící kvíz a v zamčeném archivu null.
+//     players.send(clientId, msg, onSent) předá onSent čas odeslání sentAt z pluginu (hodiny pluginu, beze změny).
 //
 // Spoléhá na věci z app.js (při jejich změně zkontrolovat tenhle soubor):
-//   globály: state (view, bigTeams, locked, teams[name, emoji, color], quiz.questions, index), currentQ (jen .revealed)
+//   globály: state (view, bigTeams, locked, teams[name, emoji, color], quiz.questions, index),
+//            currentQ (snímek ovladače a players.context() jen .revealed; players.question() otázku přes questionView)
 //   prvky:   #topic (cíl textu na zadání, našeptávač na událost input), #teams a #answers (děti se překreslují),
 //            #answers .answer, #menuPanel, #emojiPicker, dialog[open], body[data-view],
 //            název týmu se ukládá na change, pole v Nastavení serveru (tv-server.js) na input i change,
@@ -349,7 +354,7 @@
     return view || { rev: ++rev, phase: "off" };
   }
 
-  // join a buzz: clientId jen z registru podle spojení, nikdy ze zprávy; ack z návratové hodnoty posluchače.
+  // join, buzz a answer: clientId jen z registru podle spojení, nikdy ze zprávy; ack z návratové hodnoty posluchače.
   function onPlayerMessage(connId, msg, rx) {
     if (!clients.accept(connId, msg.seq)) return ack(connId, msg.seq, false, "duplicate");
     const client = clients.byConn(connId);
@@ -395,7 +400,7 @@
     if (!Link.allowedFor(client.role, msg.t)) return send(connId, { t: "error", code: "forbidden" });
     if (msg.t === "key") return onKey(connId, msg);
     if (msg.t === "text") return onText(connId, msg);
-    if (msg.t === "join" || msg.t === "buzz") return onPlayerMessage(connId, msg, e.rx);
+    if (msg.t === "join" || msg.t === "buzz" || msg.t === "answer") return onPlayerMessage(connId, msg, e.rx);
   }
 
   /* ---------- Události pluginu ---------- */
@@ -516,13 +521,26 @@
     onConnection(cb) { playerConnectionCb = typeof cb === "function" ? cb : null; },
     setView(fn) { playerViewFn = typeof fn === "function" ? fn : null; },
     // Vždy jednomu hráči přes jeho spojení; jde jen snímek `state` a jen s povolenými klíči (nový objekt).
-    send(clientId, msg) {
+    // onSent(sentAt) dostane čas odeslání v hodinách pluginu, jen po úspěšném odeslání a jen konečné číslo.
+    send(clientId, msg, onSent) {
       const c = connectedPlayer(clientId);
       if (!c || !msg || msg.t !== "state") return false;
       const view = Link.playerStateView(msg);
       if (!view) return false;
-      send(c.connId, Object.assign({ t: "state" }, view));
+      const sending = send(c.connId, Object.assign({ t: "state" }, view));
+      if (typeof onSent === "function") {
+        sending.then((result) => {
+          if (result && Number.isFinite(result.sentAt)) callSafely(onSent, [result.sentAt], "zpětného volání odeslání");
+        });
+      }
       return true;
+    },
+    // Otázka pro hráče jen přes filtr questionView (správná odpověď až po odhalení); v archivu ani mimo kvíz nic.
+    question() {
+      const s = appState();
+      if (s.view !== "quiz" || s.locked === true || !s.quiz || !Array.isArray(s.quiz.questions)) return null;
+      if (typeof currentQ !== "function") return null;
+      return Link.questionView(currentQ());
     },
     // Hráče úplně zapomene (jen role player, ovladač nikdy); připojenému nejdřív zavře spojení.
     forget(clientId) {

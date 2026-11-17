@@ -52,6 +52,17 @@
         <span class="toggle-text">Bod za správnou odpověď automaticky</span>
       </label>
     </div>
+    <div class="tv-game-mode" id="tvGameMode" role="radiogroup" aria-labelledby="tvGameModeLabel">
+      <span class="tv-game-mode-label" id="tvGameModeLabel">Režim hry</span>
+      <label class="tv-game-mode-opt">
+        <input type="radio" name="tvGameMode" value="buzz">
+        <span class="tv-game-mode-box"><i class="ph ph-check-circle" aria-hidden="true"></i><span>Bzučák – kdo první zabzučí, odpovídá nahlas</span></span>
+      </label>
+      <label class="tv-game-mode-opt">
+        <input type="radio" name="tvGameMode" value="answers">
+        <span class="tv-game-mode-box"><i class="ph ph-check-circle" aria-hidden="true"></i><span>Odpovědi na mobilu – každý vybere A, B nebo C, rychlost přidá body</span></span>
+      </label>
+    </div>
     <p class="tv-game-warn" id="tvGameWarn" role="note" hidden><i class="ph ph-warning" aria-hidden="true"></i><span>Bzučák potřebuje aspoň 2 týmy.</span></p>
     <div class="tv-game-body">
       <div class="tv-game-qr" id="tvGameQr"></div>
@@ -77,6 +88,7 @@
   const enabledBox = part("tvGameEnabled");
   const autoBox = part("tvGameAuto");
   const playersUl = part("tvGamePlayers");
+  const modeRadios = [...dlg.querySelectorAll('input[name="tvGameMode"]')];
   let qrKey = null;   // „zapnuto|adresa“, pro kterou je vykreslené pole QR
   let opener = null;  // prvek, na který se po zavření vrátí fokus
   let timer = null;
@@ -109,6 +121,15 @@
 
   const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const setClass = (node, cls) => { if (node.className !== cls) node.className = cls; };
+
+  // Varování podle režimu: bzučák potřebuje 2 týmy, odpovědi aspoň 1 (kontrakt § 8). Text i viditelnost jen při změně.
+  const WARN_TEXTS = { buzz: "Bzučák potřebuje aspoň 2 týmy.", answers: "Odpovědi potřebují aspoň 1 tým." };
+  const MIN_TEAMS = { buzz: 2, answers: 1 };
+  function renderWarn(node, s) {
+    const hidden = !(s.enabled && (appState().teams || []).length < MIN_TEAMS[s.mode]);
+    if (node.hidden !== hidden) node.hidden = hidden;
+    setText(node.querySelector("span"), WARN_TEXTS[s.mode]);
+  }
 
   // Stav připojení v dialogu i na kartě: uzel s <i> a <span>, třída „ok“ při aspoň jednom připojeném.
   function renderStatus(st, enabled, connectedCount) {
@@ -232,7 +253,11 @@
     if (enabledBox.checked !== s.enabled) enabledBox.checked = s.enabled;
     if (autoBox.checked !== s.autoPoints) autoBox.checked = s.autoPoints;
     autoBox.disabled = !s.enabled;
-    part("tvGameWarn").hidden = !(s.enabled && (appState().teams || []).length < 2);
+    for (const radio of modeRadios) {
+      const checked = radio.value === s.mode;
+      if (radio.checked !== checked) radio.checked = checked;
+    }
+    renderWarn(part("tvGameWarn"), s);
     const key = `${s.enabled}|${url || ""}`;
     if (key !== qrKey) {
       renderQrBox(s.enabled, url);
@@ -289,11 +314,22 @@
   }
   let cardQrKey = null; // „zapnuto|adresa“, pro kterou je vykreslené pole QR karty
 
-  const CARD_STATES = {
-    off: {
+  // Vzhled pozvánky (stav off) podle režimu hry; nadpis je i aria-label karty.
+  const CARD_MODES = {
+    buzz: {
       icon: "ph ph-bell-ringing",
       title: "Hrát s mobily – bzučák",
       text: "Hosté se připojí mobilem. Kdo první zabzučí, odpovídá za svůj tým.",
+    },
+    answers: {
+      icon: "ph ph-device-mobile",
+      title: "Hrát s mobily – odpovědi",
+      text: "Hosté se připojí mobilem a odpovídají sami. Rychlá správná odpověď dá víc bodů.",
+    },
+  };
+
+  const CARD_STATES = {
+    off: {
       button: "btn primary",
       buttonIcon: "ph ph-power",
       label: "Zapnout",
@@ -387,8 +423,10 @@
   // Dva stavy podle Game.settings().enabled; karta je na zadání vidět vždy.
   function renderCard(s, url, list) {
     const on = s.enabled;
-    const look = CARD_STATES[on ? "on" : "off"];
+    const modeLook = CARD_MODES[s.mode];
+    const look = on ? CARD_STATES.on : { ...CARD_STATES.off, ...modeLook };
     card.dataset.state = on ? "on" : "off";
+    if (card.getAttribute("aria-label") !== modeLook.title) card.setAttribute("aria-label", modeLook.title);
     setClass(cardIcon, ("tv-game-card-icon " + look.icon).trim());
     cardIcon.hidden = !look.icon;
     setText(cardTitle, look.title);
@@ -402,7 +440,7 @@
 
     renderCardQr(on, url);
     renderStatus(cardStatus, on, list.filter((p) => p.connected).length);
-    cardWarn.hidden = !(on && (appState().teams || []).length < 2);
+    renderWarn(cardWarn, s);
     if (on) renderCardTeams(list);
     else { cardTeams.textContent = ""; cardTeams.hidden = true; }
 
@@ -481,6 +519,10 @@
     requestEnable(enabledBox);
   });
   autoBox.addEventListener("change", () => Game.setAutoPoints(autoBox.checked));
+  // Přepnutí režimu jen ukládá volbu: klíč ovladače ani běžící kolo se nemění, fokus zůstává na zvoleném přepínači.
+  for (const radio of modeRadios) {
+    radio.addEventListener("change", () => { if (radio.checked) Game.setMode(radio.value); });
+  }
 
   // Vypnutí bez dotazu (R50); fokus zůstává na tlačítku, mění se jen jeho text.
   toggleBtn.addEventListener("click", () => {

@@ -266,6 +266,20 @@ test("tally: bez openAt je elapsedMs null a body = základ; rx před openAt dáv
   assert.equal(early.answers.tally(early.roster, "a", 100).teams[0].elapsedMs, 0);
 });
 
+test("tally: hlas bez platného rx při nastaveném openAt má elapsedMs null a body = základ", () => {
+  const { answers, roster } = votedRound([["p1", "a", undefined]], { p1: 0 });
+  const team = answers.tally(roster, "a", 100).teams[0];
+  assert.equal(team.elapsedMs, null);
+  assert.equal(team.points, 100);
+});
+
+test("tally: clientId __proto__ se započítá", () => {
+  const { answers, roster } = votedRound([["__proto__", "b", 1100]], { ["__proto__"]: 1 });
+  const res = answers.tally(roster, "b", 100);
+  assert.deepEqual(res.teams.map((t) => t.team), [1]);
+  assert.deepEqual(res.votes, { a: 0, b: 1, c: 0 });
+});
+
 test("tally: hráč mimo soupisku nebo bez týmu se nepočítá; týmy podle indexu", () => {
   const { answers } = votedRound([["p1", "a", 1100], ["ghost", "a", 1100], ["p3", "b", 1100], ["p4", "c", 1100]], { p1: 2, ghost: 0, p3: 0, p4: 0 });
   const roster = [{ clientId: "p1", team: 2 }, { clientId: "p3", team: null }, { clientId: "p4", team: 0 }];
@@ -344,4 +358,243 @@ test("cancel maže výsledek", () => {
   answers.tally(roster, "a", 100);
   answers.cancel();
   assert.equal(answers.result(), null);
+});
+
+// --- viewFor (kontrakt § 6) ---
+
+const TEAMS = [
+  { name: "Lvi", emoji: "🦁", color: "#f00", score: 5 },
+  { name: "Orli", emoji: "🦅", color: "#00f" }
+];
+const ME = { name: "Eva", team: 0 };
+const VIEW_KEYS = ["rev", "phase", "mode", "me", "teams", "quiz", "ask"];
+// Pole, která ve výstupu nesmí být nikdy (vstup je záměrně obsahuje).
+const FORBIDDEN = ["explanation", "picked", "src", "page", "credit", "clientId", "rx", "openAt", "elapsedMs"];
+
+// ctx s otázkou 2 a vstupem, který záměrně nese správnou odpověď i zakázaná pole.
+function makeCtx(extra = {}) {
+  return {
+    rev: 7,
+    enabled: true,
+    view: "quiz",
+    locked: false,
+    teams: TEAMS,
+    index: 2,
+    total: 10,
+    revealed: false,
+    now: 1000,
+    expected: 3,
+    ask: {
+      question: "Kolik je 2 + 2?",
+      answers: { a: "3", b: "4", c: "5" },
+      image: true,
+      correct: "b",
+      explanation: "protože",
+      picked: "b",
+      src: "https://x/y.jpg",
+      page: "Stránka",
+      credit: "Autor",
+      clientId: "p1",
+      rx: 1,
+      openAt: 1,
+      elapsedMs: 1
+    },
+    ...extra
+  };
+}
+
+// Kolo otázky 2 (deadlineAt 31000, openAt 1000) s hlasy p1 (tým 0) a p2 (tým 1).
+function viewRound() {
+  const { answers, round } = openRound();
+  answers.setOpenAt(round, 1000);
+  answers.answer("p1", round, "b", 1500, 10, { team: 0 });
+  answers.answer("p2", round, "a", 1600, 10, { team: 1 });
+  return { answers, round, roster: [{ clientId: "p1", team: 0 }, { clientId: "p2", team: 1 }] };
+}
+
+// Instance ve zvolené fázi; revealed ve vstupu je záměrně true i u fází před result.
+function viewIn(phase) {
+  const { answers, roster } = viewRound();
+  const revealed = { revealed: true };
+  if (phase === "off") return { answers, ctx: makeCtx({ enabled: false, ...revealed }) };
+  if (phase === "lobby") return { answers, ctx: makeCtx({ view: "setup", ...revealed }) };
+  if (phase === "wait") return { answers, ctx: makeCtx({ index: 5, ...revealed }) };
+  if (phase === "closed") answers.close("time");
+  if (phase === "result") answers.tally(roster, "b", 100);
+  return { answers, ctx: makeCtx(revealed) };
+}
+
+for (const phase of ["off", "lobby", "wait", "answer", "closed"]) {
+  test(`viewFor: fáze ${phase} neobsahuje correct ani při correct a revealed ve vstupu`, () => {
+    const { answers, ctx } = viewIn(phase);
+    const view = answers.viewFor("p1", ctx, ME);
+    assert.equal(view.phase, phase);
+    const json = JSON.stringify(view);
+    assert.equal(json.includes("\"correct\""), false);
+    // ani rozložení hlasů a body týmu, z nichž by šla správná odpověď odvodit
+    assert.equal(json.includes("\"votes\""), false);
+    assert.equal(json.includes("\"points\""), false);
+    if (view.ask) assert.equal(view.ask.result, null);
+  });
+}
+
+test("viewFor: tally proběhlo, ale bez revealed === true → wait a žádný correct", () => {
+  const { answers, roster } = viewRound();
+  answers.tally(roster, "b", 100);
+  for (const revealed of [false, "true", 1, undefined]) {
+    const view = answers.viewFor("p1", makeCtx({ revealed }), ME);
+    assert.equal(view.phase, "wait");
+    assert.equal(view.ask, null);
+    assert.equal(JSON.stringify(view).includes("\"correct\""), false);
+  }
+});
+
+test("viewFor: zakázaná pole nejsou ve výstupu v žádné fázi", () => {
+  for (const phase of ["off", "lobby", "wait", "answer", "closed", "result"]) {
+    const { answers, ctx } = viewIn(phase);
+    const json = JSON.stringify(answers.viewFor("p1", ctx, { ...ME, clientId: "p1", resume: "tajne" }));
+    for (const key of FORBIDDEN) assert.equal(json.includes(`"${key}"`), false, `${phase}: ${key}`);
+    for (const value of ["protože", "https://x/y.jpg", "Autor", "Stránka", "tajne"]) assert.equal(json.includes(value), false, `${phase}: ${value}`);
+  }
+});
+
+test("viewFor: klíče výstupu jsou podmnožinou kontraktu", () => {
+  for (const phase of ["off", "lobby", "wait", "answer", "closed", "result"]) {
+    const { answers, ctx } = viewIn(phase);
+    const view = answers.viewFor("p1", { ...ctx, extra: 1, buzz: {} }, ME);
+    for (const key of Object.keys(view)) assert.ok(VIEW_KEYS.includes(key), `${phase}: ${key}`);
+    assert.equal(view.mode, "answers");
+  }
+});
+
+test("viewFor: fáze off – me null a teams prázdné; neplatný ctx také off", () => {
+  const { answers, ctx } = viewIn("off");
+  assert.deepEqual(answers.viewFor("p1", ctx, ME), { rev: 7, phase: "off", mode: "answers", me: null, teams: [], quiz: null, ask: null });
+  assert.equal(answers.viewFor("p1", null, ME).phase, "off");
+  assert.equal(answers.viewFor("p1", "x", ME).phase, "off");
+});
+
+test("viewFor: archiv nebo jiná obrazovka → lobby bez quiz a ask", () => {
+  const { answers } = viewRound();
+  for (const extra of [{ locked: true }, { view: "results" }]) {
+    const view = answers.viewFor("p1", makeCtx(extra), ME);
+    assert.equal(view.phase, "lobby");
+    assert.equal(view.quiz, null);
+    assert.equal(view.ask, null);
+    assert.deepEqual(view.me, { name: "Eva", team: 0 });
+    assert.equal(view.teams.length, 2);
+  }
+});
+
+test("viewFor: kolo jiné otázky nebo bez kola → wait s quiz, bez ask", () => {
+  const { answers } = viewRound();
+  const view = answers.viewFor("p1", makeCtx({ index: 3 }), ME);
+  assert.equal(view.phase, "wait");
+  assert.deepEqual(view.quiz, { index: 3, total: 10 });
+  assert.equal(view.ask, null);
+  assert.equal(createAnswers().viewFor("p1", makeCtx(), ME).phase, "wait");
+  const cancelled = viewRound().answers;
+  cancelled.cancel();
+  assert.equal(cancelled.viewFor("p1", makeCtx(), ME).phase, "wait");
+});
+
+test("viewFor: open → answer, closed → closed s otázkou a odpověďmi", () => {
+  const { answers, round } = viewRound();
+  const view = answers.viewFor("p1", makeCtx(), ME);
+  assert.equal(view.phase, "answer");
+  assert.deepEqual(view.ask, {
+    round,
+    question: "Kolik je 2 + 2?",
+    answers: { a: "3", b: "4", c: "5" },
+    image: true,
+    limitMs: LIMIT,
+    remainingMs: 30000,
+    mine: "b",
+    answered: 2,
+    expected: 3,
+    result: null
+  });
+  answers.close("all");
+  const closed = answers.viewFor("p1", makeCtx(), ME);
+  assert.equal(closed.phase, "closed");
+  assert.equal(closed.ask.remainingMs, 0);
+  assert.equal(closed.ask.mine, "b");
+});
+
+test("viewFor: ask null, když ctx.ask není objekt s textem otázky", () => {
+  const { answers } = viewRound();
+  for (const ask of [null, "x", { question: 5 }, {}]) assert.equal(answers.viewFor("p1", makeCtx({ ask }), ME).ask, null);
+});
+
+test("viewFor: odpovědi jen jako řetězce a/b/c, image jako boolean, expected nezáporné celé", () => {
+  const { answers } = viewRound();
+  const view = answers.viewFor("p1", makeCtx({ expected: -1, ask: { question: "Q", answers: { a: 1, b: { correct: "b" }, d: "x" }, image: { src: "s" } } }), ME);
+  assert.deepEqual(view.ask.answers, { a: "", b: "", c: "" });
+  assert.equal(view.ask.image, true);
+  assert.equal(view.ask.expected, 0);
+  const plain = answers.viewFor("p1", makeCtx({ ask: { question: "Q", answers: null } }), ME);
+  assert.deepEqual(plain.ask.answers, { a: "", b: "", c: "" });
+  assert.equal(plain.ask.image, false);
+});
+
+test("viewFor: remainingMs = deadlineAt − now, nikdy záporné, bez hodin limit", () => {
+  const { answers } = viewRound();
+  assert.equal(answers.viewFor("p1", makeCtx({ now: 21000.4 }), ME).ask.remainingMs, 10000);
+  assert.equal(answers.viewFor("p1", makeCtx({ now: 31000 }), ME).ask.remainingMs, 0);
+  assert.equal(answers.viewFor("p1", makeCtx({ now: 99999 }), ME).ask.remainingMs, 0);
+  assert.equal(answers.viewFor("p1", makeCtx({ now: undefined }), ME).ask.remainingMs, LIMIT);
+  const noClock = createAnswers();
+  noClock.open(2, 5000, undefined);
+  assert.equal(noClock.viewFor("p1", makeCtx(), ME).ask.remainingMs, 5000);
+});
+
+test("viewFor: mine jen pro vlastní hlas, jiný hráč vidí null", () => {
+  const { answers } = viewRound();
+  assert.equal(answers.viewFor("p1", makeCtx(), ME).ask.mine, "b");
+  assert.equal(answers.viewFor("p2", makeCtx(), { name: "Jan", team: 1 }).ask.mine, "a");
+  assert.equal(answers.viewFor("p3", makeCtx(), { name: "Ola", team: 0 }).ask.mine, null);
+});
+
+test("viewFor: fáze result má correct, votes a výsledek týmu hráče", () => {
+  const { answers, ctx } = viewIn("result");
+  const view = answers.viewFor("p1", ctx, ME);
+  assert.equal(view.phase, "result");
+  assert.deepEqual(view.ask.result, { correct: "b", votes: { a: 1, b: 1, c: 0 }, team: { answer: "b", correct: true, points: points(100, 500, LIMIT) } });
+  assert.deepEqual(answers.viewFor("p2", ctx, { name: "Jan", team: 1 }).ask.result.team, { answer: "a", correct: false, points: 0 });
+});
+
+test("viewFor: result – tým, který nehlasoval, nebo hráč bez týmu má team null", () => {
+  const { answers, ctx } = viewIn("result");
+  assert.equal(answers.viewFor("p9", ctx, { name: "Ola", team: 3 }).ask.result.team, null);
+  assert.equal(answers.viewFor("p9", ctx, { name: "Ola", team: null }).ask.result.team, null);
+  assert.equal(answers.viewFor("p9", ctx, null).ask.result.team, null);
+});
+
+test("viewFor: correct z ctx.ask se nekopíruje ani ve fázi result", () => {
+  const { answers, ctx } = viewIn("result");
+  const view = answers.viewFor("p1", { ...ctx, ask: { ...ctx.ask, correct: "c" } }, ME);
+  assert.equal(view.ask.result.correct, "b");
+  // jen result.correct a result.team.correct
+  assert.equal(JSON.stringify(view).match(/"correct"/g).length, 2);
+});
+
+test("viewFor: úprava snímku nezmění uložený výsledek", () => {
+  const { answers, ctx } = viewIn("result");
+  const view = answers.viewFor("p1", ctx, ME);
+  view.ask.result.votes.a = 9;
+  view.ask.result.team.points = 0;
+  assert.equal(answers.result().votes.a, 1);
+  assert.ok(answers.result().teams[0].points > 0);
+});
+
+test("viewFor: me a teams pole po poli, nejvýš 4 týmy, rev jen bezpečné celé", () => {
+  const { answers } = viewRound();
+  const many = [...TEAMS, ...TEAMS, { name: "Pátý" }];
+  const view = answers.viewFor("p1", makeCtx({ teams: many, rev: 1.5 }), { name: 5, team: 0, clientId: "p1" });
+  assert.equal("rev" in view, false);
+  assert.equal(view.teams.length, 4);
+  assert.deepEqual(view.teams[0], { name: "Lvi", emoji: "🦁", color: "#f00" });
+  assert.deepEqual(view.me, { name: "5", team: 0 });
+  assert.deepEqual(answers.viewFor("p1", makeCtx(), { name: "Bez", team: -1 }).me, { name: "Bez", team: null });
+  assert.equal(answers.viewFor("p1", makeCtx(), null).me, null);
 });

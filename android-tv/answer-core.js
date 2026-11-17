@@ -3,7 +3,8 @@
 // Dvoje hodiny: rx, sentAt a openAt jsou hodiny pluginu (jen pro výpočet času odpovědi), now a deadlineAt hodiny JS
 // (jen konec příjmu a zbývající čas). Nikdy se navzájem neporovnávají; mobil čas neposílá, takže ho nejde podvrhnout.
 // Rozhraní: KEYS, TIMING, points(base, elapsedMs, limitMs) a createAnswers() s metodami open, setOpenAt, answer,
-// close, cancel, running, allAnswered, count, tally, result, round. Závazné znění: .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md § 4.
+// close, cancel, running, allAnswered, count, tally, result, round, viewFor. Závazné znění: .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md
+// § 4 a § 6.
 (function (root) {
   "use strict";
 
@@ -12,9 +13,38 @@
   var STATUS = { idle: "idle", open: "open", closed: "closed", result: "result" };
   var CLOSE_REASONS = ["time", "all", "reveal"];
   var MS_PER_SECOND = 1000;
+  var MAX_TEAMS = 4;
 
   function isPositiveFinite(value) {
     return Number.isFinite(value) && value > 0;
+  }
+
+  function isObject(value) {
+    return value !== null && typeof value === "object";
+  }
+
+  function toText(value) {
+    return value === undefined || value === null ? "" : String(value);
+  }
+
+  function toCount(value) {
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  }
+
+  // Tým do snímku: jen tři textová pole, nic dalšího (např. body) se nepřenáší.
+  function viewTeam(team) {
+    var source = isObject(team) ? team : {};
+    return { name: toText(source.name), emoji: toText(source.emoji), color: toText(source.color) };
+  }
+
+  // Texty odpovědí: jen řetězce pod klíči a/b/c, cokoli jiného se nahradí prázdným textem.
+  function viewAnswers(answers) {
+    var source = isObject(answers) ? answers : {};
+    var view = {};
+    KEYS.forEach(function (key) {
+      view[key] = typeof source[key] === "string" ? source[key] : "";
+    });
+    return view;
   }
 
   // Základ + bonus za rychlost po celých sekundách; bez platného času jen základ.
@@ -110,7 +140,7 @@
 
     // Hlasy započítaných hráčů (ze soupisky, s týmem) seskupené po týmech: počty a nejdřívější hlas pro každý klíč.
     function groupVotes(roster) {
-      var teamOf = {};
+      var teamOf = Object.create(null); // bez prototypu, aby se započítalo i clientId "__proto__"
       (Array.isArray(roster) ? roster : []).forEach(function (player) {
         if (hasTeam(player)) teamOf[player.clientId] = player.team;
       });
@@ -193,6 +223,76 @@
       };
     }
 
+    // Pořadí pravidel je závazné (kontrakt § 6). Výsledek se ukáže až po odhalení otázky na TV.
+    function viewPhase(input) {
+      if (!input.enabled) return "off";
+      if (input.view !== "quiz" || input.locked) return "lobby";
+      if (state.q !== input.index) return "wait";
+      if (state.status === STATUS.open) return "answer";
+      if (state.status === STATUS.closed) return "closed";
+      if (state.status === STATUS.result && input.revealed === true) return "result";
+      return "wait";
+    }
+
+    function remainingMs(phase, now) {
+      if (phase !== "answer") return 0;
+      if (!Number.isFinite(state.deadlineAt) || !Number.isFinite(now)) return state.limitMs;
+      return Math.max(0, Math.round(state.deadlineAt - now));
+    }
+
+    // Výsledek pro hráče: správná odpověď, celkové rozložení hlasů a jen výsledek jeho týmu (bez časů).
+    function viewResult(player) {
+      var team = null;
+      if (hasTeam(player)) {
+        state.result.teams.forEach(function (t) {
+          if (t.team === player.team) team = { answer: t.answer, correct: t.correct, points: t.points };
+        });
+      }
+      var votes = state.result.votes;
+      return { correct: state.result.correct, votes: { a: votes.a, b: votes.b, c: votes.c }, team: team };
+    }
+
+    function viewAsk(clientId, input, phase, player) {
+      var source = input.ask;
+      if (!isObject(source) || typeof source.question !== "string") return null;
+      var vote = findVote(clientId);
+      return {
+        round: state.round,
+        question: source.question,
+        answers: viewAnswers(source.answers),
+        image: Boolean(source.image),
+        limitMs: state.limitMs,
+        remainingMs: remainingMs(phase, input.now),
+        mine: vote !== null ? vote.key : null,
+        answered: state.votes.length,
+        expected: toCount(input.expected),
+        result: phase === "result" && state.result !== null ? viewResult(player) : null
+      };
+    }
+
+    // Snímek pro mobil hráče v režimu odpovědí, skládaný pole po poli; ctx ani hráč se nekopírují.
+    // Správná odpověď nesmí na mobil před odhalením. Hlídají to tři pojistky:
+    // (1) KvizLinkCore.questionView pustí correct jen u odhalené otázky,
+    // (2) tady se correct bere jen z uloženého výsledku kola (tally) a jen ve fázi result, tj. po odhalení na TV,
+    // (3) KvizLinkCore.PLAYER_STATE_KEYS propustí ze snímku jen vyjmenované klíče.
+    // ctx.ask.correct se proto nikdy nekopíruje: kdyby ho vstup omylem nesl, první pojistka by tím padla.
+    function viewFor(clientId, ctx, player) {
+      var input = isObject(ctx) ? ctx : { enabled: false };
+      var phase = viewPhase(input);
+      var live = phase !== "off" && phase !== "lobby";
+      var withAsk = phase === "answer" || phase === "closed" || phase === "result";
+
+      var view = {};
+      if (Number.isSafeInteger(input.rev)) view.rev = input.rev;
+      view.phase = phase;
+      view.mode = "answers";
+      view.me = phase !== "off" && isObject(player) ? { name: toText(player.name), team: hasTeam(player) ? player.team : null } : null;
+      view.teams = phase !== "off" && Array.isArray(input.teams) ? input.teams.slice(0, MAX_TEAMS).map(viewTeam) : [];
+      view.quiz = live ? { index: toCount(input.index), total: toCount(input.total) } : null;
+      view.ask = withAsk ? viewAsk(clientId, input, phase, player) : null;
+      return view;
+    }
+
     return {
       open: open,
       setOpenAt: setOpenAt,
@@ -204,7 +304,8 @@
       count: count,
       tally: tally,
       result: result,
-      round: round
+      round: round,
+      viewFor: viewFor
     };
   }
 

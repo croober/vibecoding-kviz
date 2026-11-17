@@ -95,7 +95,7 @@ Karta ovladače stojí na zadání pod kartou hry (**Hrát s mobily – bzučák
 
 - **Ovladač:** šipky, OK, Zpět, Menu (stejné akce jako na ovladači televize).
 - **Týmy a body:** tlačítka 1–4 a Vše vybírají týmy, plus / minus mění body vybranému týmu. Tlačítka se řídí počtem týmů na TV (výběr týmů je od dvou týmů, body od jednoho); mimo kvíz jsou skrytá a v archivu, při otevřeném menu nebo dialogu zamčená.
-- **Odpověď číslem:** tlačítka A / B / C vyberou odpověď. Fungují jen v běžícím (ne archivním) kvízu, v malém zobrazení týmů, bez otevřeného menu nebo dialogu a na neodhalené otázce; jinak TV odpoví „locked“ a mobil ukáže hlášku.
+- **Odpověď číslem:** tlačítka 1 / 2 / 3 vyberou odpověď. Fungují jen v běžícím (ne archivním) kvízu, v malém zobrazení týmů, bez otevřeného menu nebo dialogu a na neodhalené otázce; jinak TV odpoví „locked“ a mobil ukáže hlášku.
 - **Psaní do aktivního pole:** vybrané pole na TV se objeví na mobilu a text se na TV přepisuje při psaní, **Hotovo** pole potvrdí (změna se uloží jako po Hotovo na klávesnici televize). Na zadání bez vybraného pole se píše do pole s tématem. Pole s heslem (token, basic auth v Nastavení serveru) se maskuje: hodnota z TV na mobil nikdy nejde, na mobilu jde jen přepsat. **Adresu serveru** jde z mobilu měnit jen tehdy, když je token i basic auth prázdný (údaje by jinak mohly odejít na podstrčenou adresu). V archivním kvízu se mimo dialogy nepíše. Délka textu je omezená (500 znaků nebo `maxLength` pole).
 - Stav: ukazuje připojení, aktuální obrazovku a zámek archivu. Při výpadku spojení se mobil připojuje sám (a hned po návratu na stránku), spárování si pamatuje v prohlížeči.
 
@@ -126,7 +126,7 @@ Hra se zapíná a vypíná na kartě na zadání nebo v dialogu Hráči na mobil
 - **Odjištění:** bzučák se odjistí **1 s** po zobrazení otázky. Dřív je tlačítko na mobilu „Připrav se…“.
 - **Předčasný stisk:** stisk před odjištěním dá hráči trest **1,5 s** (tlačítko „Moc brzy!“).
 - **Kdo byl první:** televize sbírá stisky po prvním stisku **60 ms** a vítěze vybere podle času příjmu na TV (ne podle hodin mobilů). Jeden stisk na hráče; dokud tým odpovídá, další stisky se nepřijímají.
-- **Pruh „Odpovídá“:** nad odpověďmi se ukáže „Odpovídá: <tým> – <přezdívka>“, karta týmu se zvýrazní a zazní zvuk. Moderátor vybere odpověď, kterou tým řekl (ovladačem, nebo z mobilu ovladače A / B / C).
+- **Pruh „Odpovídá“:** nad odpověďmi se ukáže „Odpovídá: <tým> – <přezdívka>“, karta týmu se zvýrazní a zazní zvuk. Moderátor vybere odpověď, kterou tým řekl (ovladačem, nebo z mobilu ovladače tlačítky 1 / 2 / 3).
 - **Zpět = bez odpovědi:** tlačítko Zpět při bzučení tým uvolní, tým je do konce otázky zamčený a bzučák se otevře ostatním. Při velkém zobrazení týmů Zpět nejdřív zavře ono.
 - **Druhá šance:** špatná odpověď, když může bzučet jiný tým s připojeným hráčem, otázku **neodhalí**: odpověď se jen označí jako špatná, tým se zamkne a bzučák se otevře ostatním. Zbývá-li jen zamčený tým, otázka se odhalí a kolo skončí. Špatné pokusy se do průběhu kvízu nezapisují.
 - **Automatický bod:** správná odpověď přičte bzučícímu týmu body samy (podle obtížnosti, jako u Jednoho týmu), **právě jednou**. Vypínač je v dialogu Hráči na mobilech. Bez bzučení (nikdo nestiskl, moderátor vybírá sám) se body přičítají ručně jako dřív.
@@ -154,7 +154,7 @@ Spojení mobilu s televizí je `ws://` a `http://`, **bez šifrování**, jen v 
 - Soupiska je jen v paměti TV. Po restartu aplikace se hráči zapíšou sami, jakmile se jejich mobil znovu připojí (stránka si pamatuje přezdívku a tým); kolo se nepamatuje.
 - Hráč smí **měnit tým jen mimo kvíz nebo po odhalení otázky** (mimo běžící kolo); jinak „Tým jde změnit až po téhle otázce“.
 - Kdo bzučel, se do archivu ani průběhu kvízu nezapisuje.
-- Odpovědi hráčů na mobilu (hráč sám volí A / B / C) jsou jen v režimu **Odpovědi na mobilu**, popis v další sekci. V režimu Bzučák odpovídá vždy moderátor.
+- Odpovědi hráčů na mobilu (hráč sám volí 1 / 2 / 3) jsou jen v režimu **Odpovědi na mobilu**, popis v další sekci. V režimu Bzučák odpovídá vždy moderátor.
 - Vyžaduje WebView ≥ Chrome 111: čištění přezdívky (`cleanName` v `game-core.js`) používá `toWellFormed()`, na starším WebView končí každý `join` chybou TypeError a nepřipojí se žádný hráč. Kosmetika: ztlumení přepínače v dialogu používá `:has()` (Chrome 105+), bez něj se přepínač jen nezešedí.
 
 ### Protokol hráče
@@ -163,7 +163,7 @@ Stejný WebSocket jako ovladač (`/ws?t=<kód>`), verze protokolu `v: 1`, role `
 
 ## Odpovědi na mobilu
 
-Volitelný režim hry s hráči: každý hráč vybere na svém mobilu A, B nebo C a rychlá správná odpověď dá týmu víc bodů. Dělá to `answer-core.js` (čistá logika kola, testy `npm run test:tv`), `tv-answers.js` (řadič kola, poslední TV skript) a stránka `mobile/player.*`; `public/` se nemění.
+Volitelný režim hry s hráči: každý hráč vybere na svém mobilu odpověď 1, 2 nebo 3 (v protokolu klíče `a` / `b` / `c`) a rychlá správná odpověď dá týmu víc bodů. Dělá to `answer-core.js` (čistá logika kola, testy `npm run test:tv`), `tv-answers.js` (řadič kola, poslední TV skript) a stránka `mobile/player.*`; `public/` se nemění.
 
 ### Volba režimu
 
@@ -186,11 +186,11 @@ Odpověď týmu určí **většina hlasů jeho hráčů**; při shodě rozhodne 
 
 ### Co hráč dostane a změněný invariant
 
-V režimu odpovědí hráč dostane text otázky, tři odpovědi a příznak, že otázka má obrázek; **správnou odpověď a rozložení hlasů až ve fázi výsledku** (po odhalení na TV). Nikdy nedostane vysvětlení, obrázek ani jeho zdroj, obtížnost, téma, volbu moderátora ani hlasy jednotlivců. **Obrázková otázka** se na mobilu ukáže jen s textem a poznámkou „Obrázek je na televizi“. Otázku pro hráče čte jen `tv-link.js` (`players.question()`, tvar určuje `KvizLinkCore.questionView`, text se krátí na 500 a odpověď na 200 znaků); `tv-game.js` dostane hotový filtrovaný objekt a snímek skládá `KvizAnswerCore.viewFor`. Režim Bzučák zůstává beze změny.
+V režimu odpovědí hráč dostane text otázky, tři odpovědi a příznak, že otázka má obrázek; **správnou odpověď a výsledek jejího týmu až ve fázi výsledku** (rozložení hlasů protokol sice nese, ale mobil ani TV ho nezobrazují) (po odhalení na TV). Nikdy nedostane vysvětlení, obrázek ani jeho zdroj, obtížnost, téma, volbu moderátora ani hlasy jednotlivců. **Obrázková otázka** se na mobilu ukáže jen s textem a poznámkou „Obrázek je na televizi“. Otázku pro hráče čte jen `tv-link.js` (`players.question()`, tvar určuje `KvizLinkCore.questionView`, text se krátí na 500 a odpověď na 200 znaků); `tv-game.js` dostane hotový filtrovaný objekt a snímek skládá `KvizAnswerCore.viewFor`. Režim Bzučák zůstává beze změny.
 
 ### Protokol
 
-Hráč smí navíc poslat `answer` (`round` = číslo kola ze snímku `ask.round`, `key` = `a` / `b` / `c`, `seq`); jiná pole se zahodí. Důvody v `ack`: `nojoin`, `closed` (kolo není otevřené nebo vypršel čas), `late` (jiné kolo), `locked` (už odpověděl), `invalid`, `off` (hra vypnutá, jiný režim, odebraný hráč). `join` s žádostí o jiný tým během kola dostane `locked`. Snímek `state` má v režimu odpovědí navíc `mode: "answers"` a `ask` (`round`, `question`, `answers`, `image`, `limitMs`, `remainingMs`, `mine`, `answered`, `expected`, ve fázi `result` ještě `result` s `correct`, hlasy a výsledek týmu hráče); `phase` je `off`, `lobby`, `wait`, `answer`, `closed` nebo `result`. Verze protokolu zůstává `v: 1`. Na mobilu se hlasy zobrazí až ve výsledku, odpočet běží z `remainingMs`.
+Hráč smí navíc poslat `answer` (`round` = číslo kola ze snímku `ask.round`, `key` = `a` / `b` / `c`, `seq`); jiná pole se zahodí. Důvody v `ack`: `nojoin`, `closed` (kolo není otevřené nebo vypršel čas), `late` (jiné kolo), `locked` (už odpověděl), `invalid`, `off` (hra vypnutá, jiný režim, odebraný hráč). `join` s žádostí o jiný tým během kola dostane `locked`. Snímek `state` má v režimu odpovědí navíc `mode: "answers"` a `ask` (`round`, `question`, `answers`, `image`, `limitMs`, `remainingMs`, `mine`, `answered`, `expected`, ve fázi `result` ještě `result` s `correct`, hlasy a výsledek týmu hráče); `phase` je `off`, `lobby`, `wait`, `answer`, `closed` nebo `result`. Verze protokolu zůstává `v: 1`. Na mobilu se souhrn hlasů nezobrazuje (jen správná odpověď, vlastní volba a text týmu), odpočet běží z `remainingMs`.
 
 ### Omezení
 
@@ -231,7 +231,7 @@ Hráč smí navíc poslat `answer` (`round` = číslo kola ze snímku `ask.round
 - [ ] Mobil: karta s QR na zadání je čitelná ze 3 m a nepřekrývá zadání ani bubliny; menu → Ovládání z mobilu otevře dialog s QR a adresou.
 - [ ] Mobil: po naskenování QR se stránka připojí, karta QR na zadání zmizí; po zavření stránky (odpojení) se karta vrátí.
 - [ ] Mobil: šipky, OK, Zpět a Menu ovládají TV stejně jako ovladač (včetně dotazu „Přejít dál bez odpovědi?“); týmy 1–4 / Vše a plus / minus mění body.
-- [ ] Mobil: A / B / C vyberou odpověď v běžícím kvízu; po odhalení, v archivu a při otevřeném menu nereagují.
+- [ ] Mobil: 1 / 2 / 3 vyberou odpověď v běžícím kvízu; po odhalení, v archivu a při otevřeném menu nereagují.
 - [ ] Mobil: psaní tématu na zadání se přepisuje do pole na TV; Hotovo ho potvrdí. V Nastavení serveru se token a basic auth na mobil nezobrazí (jen jdou přepsat) a adresu serveru nejde z mobilu změnit, když je token nebo basic auth vyplněný.
 - [ ] Mobil: po odchodu aplikace TV do pozadí a návratu se mobil připojí sám, bez nového skenování.
 - [ ] Mobil: „Nový kód“ (s potvrzením) odpojí mobil; starý QR už nefunguje, nový ano.
@@ -256,13 +256,13 @@ Hráč smí navíc poslat `answer` (`round` = číslo kola ze snímku `ask.round
 - [ ] Hráči: Odebrat hráče vyžádá potvrzení a hráč se po pokusu o návrat na stránku do hry nedostane (do vypnutí a zapnutí hry).
 - [ ] Hráči: archivní kvíz bzučák nemá (tlačítka hráčů nejsou aktivní); s jedním týmem je bzučák vypnutý a bod se přičte jako dřív.
 - [ ] Odpovědi: v dialogu Hráči na mobilech je skupina Režim hry (výchozí Bzučák), jde přepnout šipkami a OK a volba přežije restart aplikace; karta na zadání změní nadpis na „Hrát s mobily – odpovědi“.
-- [ ] Odpovědi: tři mobily odpovídají A / B / C, na TV pod odpověďmi běží pruh s odpočtem 30 s a „Odpovědělo n z m“, na mobilech se odpočet shoduje s TV.
+- [ ] Odpovědi: tři mobily odpovídají 1 / 2 / 3, na TV pod odpověďmi běží pruh s odpočtem 30 s a „Odpovědělo n z m“, na mobilech se odpočet shoduje s TV.
 - [ ] Odpovědi: když odpoví všichni, kolo se uzavře („Všichni odpověděli“) a po chvíli se správná odpověď odhalí sama; po vypršení času totéž s „Čas vypršel“.
 - [ ] Odpovědi: body týmu odpovídají pravidlům (většina hlasů týmu, základ podle obtížnosti plus bonus za rychlost) a přičtou se právě jednou; špatná odpověď bodů nedá.
 - [ ] Odpovědi: OK moderátora během kola odhalí odpověď hned a body se nepřičtou dvakrát, i s jedním týmem.
 - [ ] Odpovědi: obrázková otázka je na mobilu jen jako text s poznámkou „Obrázek je na televizi“, na TV je obrázek vidět a pruh s výsledkem pod odpověďmi ho nezakrývá (ani při velkém písmu a 12 hráčích).
-- [ ] Odpovědi: po odhalení ukáže mobil správnou odpověď, vlastní odpověď a výsledek týmu; po zhasnutí a probuzení mobilu hráč uvidí svou odpověď beze ztráty.
-- [ ] Odpovědi: pruh s výsledkem (hlasy A / B / C, týmy s body) a texty jsou čitelné z gauče při výchozí i zvětšené velikosti rozhraní, s 12 hráči ve 4 týmech se vejdou.
+- [ ] Odpovědi: po odhalení ukáže mobil správnou odpověď a vlastní volbu na tlačítkách a pod nimi text týmu („Tvůj tým: +n bodů“, když tým zvolil totéž co hráč; „Tvůj tým zvolil 2 · +n bodů“, když jinou odpověď; „Tvůj tým neodpověděl“); odpovědi jsou označené 1 / 2 / 3; po zhasnutí a probuzení mobilu hráč uvidí svou odpověď beze ztráty.
+- [ ] Odpovědi: pruh s výsledkem (jen řádky týmů „tým: 2 ✓ +n“ / „✗“, bez souhrnu hlasů; „Nikdo neodpověděl“, když nehlasoval nikdo) a texty jsou čitelné z gauče při výchozí i zvětšené velikosti rozhraní, s 12 hráči ve 4 týmech se vejdou.
 - [ ] Odpovědi: změna režimu uprostřed kola kolo restartuje (hlasy se zahodí); druhý mobil téhož hráče hlasuje samostatně, **Odebrat** ho odpojí.
 - [ ] Odpovědi: archiv ukáže „Ukázána správná odpověď“ a přičtené body v průběhu; archivní kvíz mobilům otázku neposílá.
 

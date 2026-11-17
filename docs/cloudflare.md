@@ -62,6 +62,8 @@ Poznámka: pokud Worker ještě neexistuje, `secret put` se zeptá, jestli ho m�
 
 ## 5. Nasazení
 
+Konfigurace je v `worker/wrangler.jsonc`, který se necommituje. V gitu je vzor: zkopíruj `worker/wrangler.jsonc.example` na `worker/wrangler.jsonc` a zástupnou doménu `kviz.example.cz` nahraď svou. Bez toho `wrangler deploy` nahraje kód, ale u domén skončí chybou „Can't infer zone“.
+
 Nejdřív zkouška sestavení bez nasazení:
 
 ```bash

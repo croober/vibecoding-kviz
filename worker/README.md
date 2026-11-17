@@ -37,6 +37,8 @@ Lokálně v `.dev.vars` (mimo git), v produkci jako secrets ve Wrangleru (`wrang
 
 Kompletní postup (přihlášení, secrets, nasazení, vlastní doména, IP omezení, řešení potíží) je v [`../docs/cloudflare.md`](../docs/cloudflare.md). Nasazení provádí majitel účtu ručně, nic se nedělá automaticky.
 
+**Konfigurace Workeru:** v gitu je jen vzor `wrangler.jsonc.example`. Před prvním nasazením ho zkopíruj na `wrangler.jsonc` (ten je v `.gitignore`) a nahraď zástupnou doménu `kviz.example.cz` svou. Díky tomu se tvoje doména nikdy necommituje ani nepřepíše při `git pull`.
+
 ## Omezení na IP adresu
 
 Dělá se v Cloudflare, ne v kódu: v dashboardu u domény *Security → WAF → Custom rules* pravidlo „IP Source Address není v seznamu (domácí IP) → Block“. Domácí IP se může měnit; pak televize dostane odpověď „zakázáno“, dokud pravidlo neaktualizuješ. U IPv6 omezuj podle IPv6 adresy nebo prefixu.

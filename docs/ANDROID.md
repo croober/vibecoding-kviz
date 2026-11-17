@@ -15,7 +15,7 @@ Potřebuješ JDK 17 (Gradle 8.2.1 neběží na JDK 22) a Android SDK.
 
 Stejné kroky jedním příkazem (příprava, sync, sestavení; Windows): `npm run android:debug`.
 
-Backend: `worker/` (Cloudflare Worker, viz `worker/README.md` a `docs/cloudflare.md`) nebo vlastní server. V `worker/wrangler.jsonc` je zástupná doména `kviz.example.cz`, před nasazením ji nahraď vlastní. Adresu serveru, token a basic auth pak zadej v aplikaci na TV (menu → Nastavení serveru) nebo předem v `android-tv/tv-config.json`.
+Backend: `worker/` (Cloudflare Worker, viz `worker/README.md` a `docs/cloudflare.md`) nebo vlastní server. Konfigurace Workeru je v `worker/wrangler.jsonc` (necommituje se): zkopíruj vzor `worker/wrangler.jsonc.example` a zástupnou doménu `kviz.example.cz` nahraď vlastní. Adresu serveru, token a basic auth pak zadej v aplikaci na TV (menu → Nastavení serveru) nebo předem v `android-tv/tv-config.json`.
 
 Debug APK je jen pro vývoj a vlastní televizi: neposílej ho dalším lidem (ladicí build zapisuje do logu zařízení víc údajů) a nepodepisuje se pro Play Store.
 

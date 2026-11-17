@@ -3,7 +3,7 @@
 // Dvoje hodiny: rx, sentAt a openAt jsou hodiny pluginu (jen pro výpočet času odpovědi), now a deadlineAt hodiny JS
 // (jen konec příjmu a zbývající čas). Nikdy se navzájem neporovnávají; mobil čas neposílá, takže ho nejde podvrhnout.
 // Rozhraní: KEYS, TIMING, points(base, elapsedMs, limitMs) a createAnswers() s metodami open, setOpenAt, answer,
-// close, cancel, running, allAnswered, count, round. Závazné znění: .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md § 4.
+// close, cancel, running, allAnswered, count, tally, result, round. Závazné znění: .claude-work/2026-11-17-odpovedi-na-mobilu/kontrakt.md § 4.
 (function (root) {
   "use strict";
 
@@ -31,7 +31,7 @@
   }
 
   function createAnswers() {
-    var state = { round: 0, q: null, status: STATUS.idle, limitMs: TIMING.limitMs, deadlineAt: null, openAt: null, closeReason: null, votes: [], result: null };
+    var state = { round: 0, q: null, status: STATUS.idle, limitMs: TIMING.limitMs, deadlineAt: null, openAt: null, closeReason: null, votes: [], result: null, scored: false };
     var voteOrder = 0; // pořadí zápisu hlasů, rozhoduje při shodném rx
 
     function findVote(clientId) {
@@ -52,6 +52,7 @@
       state.closeReason = null;
       state.votes = [];
       state.result = null;
+      state.scored = false;
       return state.round;
     }
 
@@ -88,6 +89,7 @@
       state.status = STATUS.idle;
       state.votes = [];
       state.result = null;
+      state.scored = false;
       state.openAt = null;
     }
 
@@ -104,6 +106,78 @@
 
     function count() {
       return state.votes.length;
+    }
+
+    // Hlasy započítaných hráčů (ze soupisky, s týmem) seskupené po týmech: počty a nejdřívější hlas pro každý klíč.
+    function groupVotes(roster) {
+      var teamOf = {};
+      (Array.isArray(roster) ? roster : []).forEach(function (player) {
+        if (hasTeam(player)) teamOf[player.clientId] = player.team;
+      });
+      var groups = {};
+      var total = { a: 0, b: 0, c: 0 };
+      state.votes.forEach(function (vote) {
+        if (!Object.prototype.hasOwnProperty.call(teamOf, vote.clientId)) return;
+        var team = teamOf[vote.clientId];
+        var group = groups[team] || (groups[team] = { votes: { a: 0, b: 0, c: 0 }, first: {} });
+        group.votes[vote.key] += 1;
+        total[vote.key] += 1;
+        if (!group.first[vote.key] || isEarlier(vote, group.first[vote.key])) group.first[vote.key] = vote;
+      });
+      return { total: total, groups: groups };
+    }
+
+    function isEarlier(a, b) {
+      return a.rx < b.rx || (a.rx === b.rx && a.order < b.order);
+    }
+
+    // Odpověď týmu = nejvíc hlasů; při shodě počtu ta s nejdřívějším hlasem (rx, pak pořadí zápisu), ne podle abecedy,
+    // aby tým nebyl zvýhodněn pořadím tlačítek.
+    function teamAnswer(group) {
+      return KEYS.filter(function (key) { return group.votes[key] > 0; }).reduce(function (best, key) {
+        if (best === null) return key;
+        if (group.votes[key] !== group.votes[best]) return group.votes[key] > group.votes[best] ? key : best;
+        return isEarlier(group.first[key], group.first[best]) ? key : best;
+      }, null);
+    }
+
+    // Vyhodnocení smí proběhnout jen jednou za kolo, jinak by se týmu body přičetly dvakrát: hlídá to stav i příznak scored.
+    function tally(roster, correct, base) {
+      if (!running() || state.scored) return null;
+      if (KEYS.indexOf(correct) === -1) return null;
+      var grouped = groupVotes(roster);
+      var teams = Object.keys(grouped.groups).map(Number).sort(function (x, y) { return x - y; }).map(function (team) {
+        var group = grouped.groups[team];
+        var answer = teamAnswer(group);
+        var fastest = group.first[answer];
+        var elapsedMs = state.openAt !== null && Number.isFinite(fastest.rx) ? Math.max(fastest.rx - state.openAt, 0) : null;
+        var isCorrect = answer === correct;
+        return {
+          team: team,
+          answer: answer,
+          votes: { a: group.votes.a, b: group.votes.b, c: group.votes.c },
+          elapsedMs: elapsedMs,
+          correct: isCorrect,
+          points: isCorrect ? points(base, elapsedMs, state.limitMs) : 0
+        };
+      });
+      state.result = { round: state.round, correct: correct, votes: grouped.total, teams: teams };
+      state.status = STATUS.result;
+      state.scored = true;
+      return result();
+    }
+
+    // Kopie výsledku, aby volající nemohl změnit uložený stav.
+    function result() {
+      if (state.result === null) return null;
+      return {
+        round: state.result.round,
+        correct: state.result.correct,
+        votes: { a: state.result.votes.a, b: state.result.votes.b, c: state.result.votes.c },
+        teams: state.result.teams.map(function (t) {
+          return { team: t.team, answer: t.answer, votes: { a: t.votes.a, b: t.votes.b, c: t.votes.c }, elapsedMs: t.elapsedMs, correct: t.correct, points: t.points };
+        })
+      };
     }
 
     // Kopie bez openAt a hlasů – hlasy a časy jednotlivých hráčů ven nesmí.
@@ -128,6 +202,8 @@
       running: running,
       allAnswered: allAnswered,
       count: count,
+      tally: tally,
+      result: result,
       round: round
     };
   }

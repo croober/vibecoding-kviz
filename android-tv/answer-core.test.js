@@ -220,3 +220,128 @@ test("round: kopie bez openAt a hlasů, úprava kopie stav nezmění", () => {
 test("stav na začátku: idle, kolo 0", () => {
   assert.deepEqual(createAnswers().round(), { round: 0, q: null, status: "idle", limitMs: LIMIT, deadlineAt: null, closeReason: null, count: 0 });
 });
+
+// Kolo s openAt (výchozí 1000) a hlasy [clientId, key, rx]; teamOf = clientId → tým pro answer().
+function votedRound(votes, teamOf, openAt = 1000) {
+  const { answers, round } = openRound();
+  if (openAt !== null) answers.setOpenAt(round, openAt);
+  const roster = Object.entries(teamOf).map(([clientId, team]) => ({ clientId, team }));
+  for (const [clientId, key, rx] of votes) answers.answer(clientId, round, key, rx, 10, { team: teamOf[clientId] ?? 0 });
+  return { answers, roster };
+}
+
+test("tally: většina hlasů týmu rozhoduje (B, B, A → B)", () => {
+  const { answers, roster } = votedRound([["p1", "b", 1500], ["p2", "a", 1100], ["p3", "b", 1600]], { p1: 0, p2: 0, p3: 0 });
+  const res = answers.tally(roster, "b", 100);
+  assert.equal(res.teams[0].answer, "b");
+  assert.deepEqual(res.teams[0].votes, { a: 1, b: 2, c: 0 });
+  assert.deepEqual(res.votes, { a: 1, b: 2, c: 0 });
+  assert.equal(answers.round().status, "result");
+});
+
+test("tally: shoda počtu rozhodne nejdřívější hlas (nižší rx), ne abeceda", () => {
+  const { answers, roster } = votedRound([["p1", "a", 1100], ["p2", "b", 1090]], { p1: 0, p2: 0 });
+  assert.equal(answers.tally(roster, "a", 100).teams[0].answer, "b");
+});
+
+test("tally: shoda počtu i rx rozhodne dřív zapsaný hlas", () => {
+  const { answers, roster } = votedRound([["p1", "c", 1100], ["p2", "a", 1100]], { p1: 0, p2: 0 });
+  assert.equal(answers.tally(roster, "a", 100).teams[0].answer, "c");
+});
+
+test("tally: elapsedMs z nejdřívějšího hlasu pro odpověď týmu, ne z prvního hlasu týmu", () => {
+  const { answers, roster } = votedRound([["p1", "a", 1100], ["p2", "b", 3000], ["p3", "b", 2500]], { p1: 0, p2: 0, p3: 0 });
+  const team = answers.tally(roster, "b", 100).teams[0];
+  assert.equal(team.answer, "b");
+  assert.equal(team.elapsedMs, 1500);
+  assert.equal(team.points, points(100, 1500, LIMIT));
+});
+
+test("tally: bez openAt je elapsedMs null a body = základ; rx před openAt dává 0", () => {
+  const noOpen = votedRound([["p1", "a", 1100]], { p1: 0 }, null);
+  const t1 = noOpen.answers.tally(noOpen.roster, "a", 100).teams[0];
+  assert.equal(t1.elapsedMs, null);
+  assert.equal(t1.points, 100);
+  const early = votedRound([["p1", "a", 500]], { p1: 0 });
+  assert.equal(early.answers.tally(early.roster, "a", 100).teams[0].elapsedMs, 0);
+});
+
+test("tally: hráč mimo soupisku nebo bez týmu se nepočítá; týmy podle indexu", () => {
+  const { answers } = votedRound([["p1", "a", 1100], ["ghost", "a", 1100], ["p3", "b", 1100], ["p4", "c", 1100]], { p1: 2, ghost: 0, p3: 0, p4: 0 });
+  const roster = [{ clientId: "p1", team: 2 }, { clientId: "p3", team: null }, { clientId: "p4", team: 0 }];
+  const res = answers.tally(roster, "a", 100);
+  assert.deepEqual(res.teams.map((t) => t.team), [0, 2]);
+  assert.deepEqual(res.votes, { a: 1, b: 0, c: 1 });
+});
+
+test("tally: tým bez započítaných hlasů ve výsledku chybí", () => {
+  const { answers } = votedRound([["ghost", "a", 1100]], { ghost: 1 });
+  const res = answers.tally([{ clientId: "p1", team: 0 }], "a", 100);
+  assert.deepEqual(res.teams, []);
+  assert.deepEqual(res.votes, { a: 0, b: 0, c: 0 });
+});
+
+test("tally: špatná odpověď týmu má points 0 a correct false", () => {
+  const { answers, roster } = votedRound([["p1", "a", 1100]], { p1: 1 });
+  const team = answers.tally(roster, "b", 100).teams[0];
+  assert.equal(team.correct, false);
+  assert.equal(team.points, 0);
+});
+
+test("tally: funguje i po close, druhé volání vrací null a result drží první výsledek", () => {
+  const { answers, roster } = votedRound([["p1", "a", 1100]], { p1: 0 });
+  answers.close("time");
+  const first = answers.tally(roster, "a", 100);
+  assert.ok(first);
+  assert.equal(answers.tally(roster, "b", 500), null);
+  assert.deepEqual(answers.result(), first);
+});
+
+test("tally: idle nebo neplatné correct vrací null a stav nemění", () => {
+  const idle = createAnswers();
+  assert.equal(idle.tally([], "a", 100), null);
+  assert.equal(idle.round().status, "idle");
+  const { answers, roster } = votedRound([["p1", "a", 1100]], { p1: 0 });
+  assert.equal(answers.tally(roster, "x", 100), null);
+  assert.equal(answers.round().status, "open");
+  assert.equal(answers.result(), null);
+  assert.ok(answers.tally(roster, "a", 100));
+});
+
+test("tally: hráč přešlý do jiného týmu se počítá k týmu ze soupisky", () => {
+  const { answers } = votedRound([["p1", "a", 1100]], { p1: 0 });
+  const res = answers.tally([{ clientId: "p1", team: 3 }], "a", 100);
+  assert.deepEqual(res.teams.map((t) => t.team), [3]);
+});
+
+test("result: kopie, úprava nezmění uložený výsledek; bez vyhodnocení null", () => {
+  const { answers, roster } = votedRound([["p1", "a", 1100]], { p1: 0 });
+  assert.equal(answers.result(), null);
+  answers.tally(roster, "a", 100);
+  const copy = answers.result();
+  copy.teams[0].points = 0;
+  copy.teams[0].votes.a = 9;
+  copy.votes.a = 9;
+  copy.teams.push({});
+  const again = answers.result();
+  assert.equal(again.teams.length, 1);
+  assert.equal(again.teams[0].votes.a, 1);
+  assert.equal(again.votes.a, 1);
+  assert.ok(again.teams[0].points > 0);
+});
+
+test("open maže výsledek předchozího kola a umožní nové vyhodnocení", () => {
+  const { answers, roster } = votedRound([["p1", "a", 1100]], { p1: 0 });
+  assert.ok(answers.tally(roster, "a", 100));
+  assert.ok(answers.result());
+  answers.open(3, LIMIT, 0);
+  assert.equal(answers.result(), null);
+  assert.ok(answers.tally(roster, "a", 100));
+});
+
+test("cancel maže výsledek", () => {
+  const { answers, roster } = votedRound([["p1", "a", 1100]], { p1: 0 });
+  answers.tally(roster, "a", 100);
+  answers.cancel();
+  assert.equal(answers.result(), null);
+});

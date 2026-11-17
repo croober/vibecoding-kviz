@@ -109,6 +109,77 @@
   50% { box-shadow: var(--shadow), 0 0 0 20px var(--accent-soft); }
 }
 
+/* Přepínání bloků podle režimu hry (výchozí je bzučák) */
+#game:not([data-mode="answers"]) #ask,
+#game[data-mode="answers"] #buzz-area,
+.ask[hidden],
+.ask-image[hidden],
+.ask-votes[hidden] { display: none; }
+
+/* Odpovědi na mobilu: obsah se zalamuje a stránka se posouvá, nic se neřeže */
+.ask { display: flex; flex-direction: column; gap: 14px; margin-block: 8px; }
+.ask-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; align-items: center; font-size: .95rem; }
+.ask-timer { font-weight: 700; font-variant-numeric: tabular-nums; min-height: 1.4em; }
+.ask-count { grid-column: 1 / -1; color: var(--muted); min-height: 1.4em; }
+.ask-bar { --left: 0; height: 10px; border-radius: 5px; background: var(--border); overflow: hidden; }
+.ask-bar::before {
+  content: ""; display: block; height: 100%; border-radius: inherit; background: var(--accent);
+  width: calc(var(--left) * 100%);
+}
+.ask-question {
+  font-family: var(--display); font-weight: 700; font-size: 1.2rem; line-height: 1.4;
+  overflow-wrap: anywhere; white-space: pre-line;
+}
+.ask-image {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border); font-size: .95rem;
+}
+.ask-image i { font-size: 22px; color: var(--muted); flex: none; }
+
+.ask-answers { display: flex; flex-direction: column; gap: 10px; }
+.ask-answer {
+  width: 100%; min-height: 56px; padding: 10px 14px; border-radius: 14px; text-align: left;
+  border: 2px solid var(--border); background: var(--surface); color: var(--text);
+  display: flex; align-items: center; gap: 12px;
+  font: inherit; font-weight: 600; font-size: 1.05rem; line-height: 1.35; cursor: pointer;
+}
+.ask-answer:not(:disabled):active { border-color: var(--accent); background: var(--accent-soft); transform: scale(.99); }
+.ask-letter {
+  flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-family: var(--display); font-weight: 800; font-size: 1.15rem;
+}
+.ask-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ask-votes { flex: none; color: var(--muted); font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ask-answer::after { flex: none; font-size: 1.4rem; font-weight: 800; }
+
+.ask-answer:disabled { cursor: default; opacity: .6; }
+.ask-answer.mine { opacity: 1; border-color: var(--accent); background: var(--accent-soft); }
+.ask-answer.mine .ask-letter { background: var(--accent); color: var(--accent-ink); }
+.ask-answer.correct { opacity: 1; border-color: var(--good); background: var(--accent-soft); }
+.ask-answer.correct::after { content: "✓"; color: var(--good); }
+.ask-answer.wrong { opacity: 1; border-color: var(--bad); background: var(--bad-soft); }
+.ask-answer.wrong::after { content: "✗"; color: var(--bad); }
+
+.ask-texts { text-align: center; min-height: 3.5em; }
+.ask-title { font-family: var(--display); font-weight: 800; font-size: 1.35rem; }
+.ask-sub { margin-top: 4px; }
+
+/* Stavy: v lobby a wait se otázka ani tlačítka neukazují */
+.ask[data-state="lobby"] .ask-meta,
+.ask[data-state="lobby"] .ask-question,
+.ask[data-state="lobby"] .ask-image,
+.ask[data-state="lobby"] .ask-answers,
+.ask[data-state="wait"] .ask-meta,
+.ask[data-state="wait"] .ask-question,
+.ask[data-state="wait"] .ask-image,
+.ask[data-state="wait"] .ask-answers { display: none; }
+.ask[data-state="lobby"] .ask-texts,
+.ask[data-state="wait"] .ask-texts { padding-block: 24px; }
+.ask[data-state="right"] .ask-title { color: var(--good); }
+.ask[data-state="wrong"] .ask-title { color: var(--bad); }
+.ask[data-state="missed"] .ask-title,
+.ask[data-state="none"] .ask-title { color: var(--warn); }
+
 /* Telefon na šířku: bzučák vedle textů */
 @media (orientation: landscape) and (max-height: 500px) {
   .screen { padding-top: 0; }

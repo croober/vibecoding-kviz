@@ -49,7 +49,7 @@
       </div>
     </form>
 
-    <section class="screen game" id="game" aria-label="Hra" hidden>
+    <section class="screen game" id="game" data-mode="buzz" aria-label="Hra" hidden>
       <div class="me">
         <span class="me-emoji" id="me-emoji" aria-hidden="true"></span>
         <span class="me-text">
@@ -59,7 +59,7 @@
         <button type="button" class="btn-ghost" id="change">Změnit tým</button>
       </div>
 
-      <div class="buzz-area">
+      <div class="buzz-area" id="buzz-area">
         <button type="button" class="buzz" id="buzz" data-state="lobby" aria-labelledby="buzz-title" disabled>
           <i class="ph ph-hand-tap" aria-hidden="true"></i>
         </button>
@@ -68,6 +68,34 @@
           <p class="buzz-sub" id="buzz-sub">Kvíz ještě neběží.</p>
         </div>
       </div>
+
+      <section class="ask" id="ask" data-state="lobby" aria-label="Odpovědi" hidden>
+        <div class="ask-meta" id="ask-meta">
+          <span class="ask-timer" id="ask-timer"></span>
+          <span class="ask-bar" id="ask-bar" aria-hidden="true"></span>
+          <span class="ask-count" id="ask-count"></span>
+        </div>
+        <p class="ask-question" id="ask-question"></p>
+        <p class="ask-image" id="ask-image" hidden>
+          <i class="ph ph-image" aria-hidden="true"></i>
+          <span>Obrázek je na televizi</span>
+        </p>
+        <div class="ask-answers" id="ask-answers">
+          <button type="button" class="ask-answer" data-key="a" aria-pressed="false" disabled>
+            <span class="ask-letter">A</span><span class="ask-text"></span><span class="ask-votes" hidden></span>
+          </button>
+          <button type="button" class="ask-answer" data-key="b" aria-pressed="false" disabled>
+            <span class="ask-letter">B</span><span class="ask-text"></span><span class="ask-votes" hidden></span>
+          </button>
+          <button type="button" class="ask-answer" data-key="c" aria-pressed="false" disabled>
+            <span class="ask-letter">C</span><span class="ask-text"></span><span class="ask-votes" hidden></span>
+          </button>
+        </div>
+        <div class="ask-texts" role="status" aria-live="polite">
+          <p class="ask-title" id="ask-title">Čekej na otázku</p>
+          <p class="ask-sub" id="ask-sub">Kvíz ještě neběží.</p>
+        </div>
+      </section>
 
       <p class="screen-hint">
         <i class="ph ph-device-mobile" aria-hidden="true"></i>
